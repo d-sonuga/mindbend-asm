@@ -174,11 +174,30 @@ parse_cmd_line_args:
     je print_empty_input_file_and_exit
     movq %rdi, %rsi                 # The number of bytes in the file
     movq %rax, %rdi                 # The input file descriptor
+    pushq %rsi                      # The input file size
+    pushq %rdi                      # Saving the input file descriptor
     call utils_alloc
     cmp $-1, %rax
     je print_err_and_exit
+    popq %rdi                       # Restoring the file descriptor
+    popq %rdx                       # Restoring the input file size
+    pushq %rdx                      # Saving the input file size again
+    pushq %rsi                      # Saving the address of the token space
+    movq %rax, %rsi                 # The address of the space for the input file contents
+    call utils_read_file
+    cmp $0, %rax
+    jl print_err_and_exit
+    movq %rsi, %rdi                 # Address of input file content space
+    popq %rdx                       # Restoring the address of the token space
+    popq %rsi                       # Restoring the input file size
+    jmp tokenize
+
+tokenize:
+    call lexer_tokenize
+    cmp $0, %rax
 
 
+    jl print_err_and_exit
     jmp exit_success
 
 print_empty_input_file_and_exit:

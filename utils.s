@@ -54,6 +54,10 @@
     .equ ERR_MSG_ALLOC_GENERIC, 74
     .asciz "Something went wrong while allocating memory. (It's probably your fault).\n"
 
+.err_msg_read_file_generic:
+    .equ ERR_MSG_READ_FILE_GENERIC_LEN, 79
+    .asciz "Something went wrong while reading the input file. (It's probably your fault).\n"
+
 .section .bss
 .char_to_print:
     .byte 0
@@ -205,7 +209,7 @@ utils_end_printint:
 #
 # Result
 # ------
-# 1. In the case of a success, the file descriptor in %rax
+# 1. In the case of a success, the file descriptor in %rax, and the file size in %rsi
 # 2. In the case of an error, -1 in %rax, the error string in %rdi, the error length in %rsi
 .equ O_RDONLY, 0
 .equ ENOENT, -2
@@ -242,6 +246,35 @@ utils_open_file_err:
 utils_open_file_err_file_doesnt_exist:
     leaq .err_msg_file_doesnt_exist(%rip), %rdi
     movq $ERR_MSG_FILE_DOESNT_EXIST_LEN, %rsi
+    ret
+
+# Role
+# ----
+# To read a file's contents into a buffer
+#
+# Expected
+# --------
+# 1. The file descriptor is in %rdi
+# 2. The file address of the buffer is in %rsi
+# 3. The number of bytes to read is in %rdx
+#
+# Result
+# ------
+# 1. In the case of a success, 0 is in %rax
+# 2. In the case of an error, -1 is in %rax, the error string in %rdi, the error length in %rsi
+.equ SYS_READ, 0
+utils_read_file:
+    movq $SYS_READ, %rax
+    syscall
+    cmp $0, %rax
+    jl utils_read_file_err
+    movq $0, %rax
+    ret
+
+utils_read_file_err:
+    leaq .err_msg_read_file_generic(%rip), %rdi
+    movq $ERR_MSG_READ_FILE_GENERIC_LEN, %rsi
+    movq $-1, %rax
     ret
 
 # Role

@@ -62,11 +62,19 @@
 # 10. If the result is equal to 0, the help message is printed and the process exits with a success
 # 11. If the result == 1, the version info is printed and the process exits with a success
 # 11. The outfilename is saved on the stack
-# 12. The input filename is passed as an argument to utils_read_file and utils_read_file is called
-# 13. The utils_read_file function either returns an error, which will be a negative
+# 12. The input filename is passed as an argument to utils_open_file and utils_open_file is called
+# 13. The utils_open_file function either returns an error, which will be a negative
 #       number in %rax, a pointer to the error string in %rdi and the length of the error
-#       in %rsi, or it's a success and returns 0 in %rax, a pointer to the buffer the file was
-#       read into in %rdi, and the length of the buffer contents in %rsi
+#       in %rsi, or it's a success and returns the input file descriptor in %rax and the
+#       number of bytes in %rdi
+# 14. The number of bytes in %rdi is compared with 0
+# 15. If it is 0, exit with error empty file
+# 16. The utils_alloc function is passed the number of bytes in %rdi and is called
+# 17. The utils_alloc function either returns an error, which will be a negative number in %rax,
+#       a pointer to the error string in %rdi, and the length of the error in %rsi, or it's a success
+#       and returns the address of the buffer to store the program in %rax, the address of the
+#       vector to store tokens in %rdi and the address of the place to store the expression structure
+#       for parsing in %rsi
 #
 # Tokenizing
 # ----------
@@ -103,6 +111,7 @@
 
 .include "utils.s"
 .include "cmd_parser.s"
+.include "lexer.s"
 
 .section .data
 .usage_info:
@@ -123,6 +132,12 @@
 .too_few_args_err_msg:
     .equ TOO_FEW_ARGS_ERR_MSG_LEN, 29
     .asciz "error: Not enough arguments\n\n"
+.err_msg_empty_input_file:
+    .equ ERR_MSG_EMPTY_INPUT_FILE_LEN, 25
+    .asciz "The input file is empty.\n"
+.err_msg_generic:
+    .equ ERR_MSG_GENERIC_LEN, 53
+    .asciz "Something went wrong. (It's most likely your fault).\n"
 
 .section .text
 .globl _start
@@ -146,13 +161,39 @@ _start:
 parse_cmd_line_args:
     call cmd_parser_parse_cmd_args
     cmp $0, %rax
-    jl print_err_and_exit
+    jl print_err_and_usage_and_exit
     je print_help_and_exit
     cmp $1, %rax
     je print_version_info_and_exit
+    pushq %rsi                      # Saving the out filename
+    movq %rax, %rdi                 # The input filename itself
+    call utils_open_file
+    cmp $0, %rax
+    jl print_err_and_exit
+    cmp $0, %rdi
+    je print_empty_input_file_and_exit
+    movq %rdi, %rsi                 # The number of bytes in the file
+    movq %rax, %rdi                 # The input file descriptor
+    call utils_alloc
+    cmp $-1, %rax
+    je print_err_and_exit
+
+
     jmp exit_success
 
+print_empty_input_file_and_exit:
+    leaq .err_msg_empty_input_file(%rip), %rdi
+    movq $ERR_MSG_EMPTY_INPUT_FILE_LEN, %rsi
+    jmp print_err_and_exit
+
 print_err_and_exit:
+    call utils_print
+    jmp exit_err
+
+print_err_and_usage_and_exit:
+    call utils_print
+    leaq .usage_info(%rip), %rdi
+    movq $USAGE_INFO_LEN, %rsi
     call utils_print
     jmp exit_err
 
@@ -181,9 +222,6 @@ exit_too_few_args:
     jmp exit_err
 
 exit_err:
-    leaq .usage_info(%rip), %rdi
-    movq $USAGE_INFO_LEN, %rsi
-    call utils_print
     movq $60, %rax
     movq $1, %rdi
     syscall

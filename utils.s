@@ -35,10 +35,33 @@
 # 2. heap_string
 
 .equ STDOUT, 1
+.equ SYS_OPEN, 2
+
+.section .data
+.err_msg_file_doesnt_exist:
+    .equ ERR_MSG_FILE_DOESNT_EXIST_LEN, 30
+    .asciz "The input file doesn't exist.\n"
+
+.err_msg_open_file_generic:
+    .equ ERR_MSG_OPEN_FILE_GENERIC_LEN, 79
+    .asciz "Something went wrong while opening the input file. (It's probably your fault).\n"
+
+.err_msg_alloc_no_memory:
+    .equ ERR_MSG_ALLOC_NO_MEMORY_LEN, 15
+    .asciz "Out of memory.\n"
+
+.err_msg_alloc_generic:
+    .equ ERR_MSG_ALLOC_GENERIC, 74
+    .asciz "Something went wrong while allocating memory. (It's probably your fault).\n"
 
 .section .bss
 .char_to_print:
     .byte 0
+
+.input_file_info_buf:
+# Space to store the struct that holds file info when the
+# fstat syscall is called to determine the length of the input file
+    .space 128
 
 .section .text
 
@@ -171,6 +194,126 @@ utils_end_printint:
     call utils_print
     movq $0, %rax
     ret
+
+# Role
+# ----
+# Open a file
+#
+# Expected
+# --------
+# 1. The address of the filename is in %rdi
+#
+# Result
+# ------
+# 1. In the case of a success, the file descriptor in %rax
+# 2. In the case of an error, -1 in %rax, the error string in %rdi, the error length in %rsi
+.equ O_RDONLY, 0
+.equ ENOENT, -2
+.equ SYS_FSTAT, 5
+.equ STAT_FILE_SIZE_OFFSET, 48
+utils_open_file:
+    movq $SYS_OPEN, %rax
+    movq $O_RDONLY, %rsi
+    syscall
+    cmp $0, %rax
+    jl utils_open_file_err          # In the case of an error, %rax holds -errno
+    pushq %rax                      # Save the file descriptor
+    movq %rax, %rdi
+    movq $SYS_FSTAT, %rax
+    leaq .input_file_info_buf(%rip), %rsi   # The location to store the stat struct
+    pushq %rsi
+    syscall
+    cmp $0, %rax
+    jl utils_open_file_err
+    popq %rsi
+    xor %rdi, %rdi                  # To remove leading 0s
+    movl STAT_FILE_SIZE_OFFSET(%rsi), %edi
+    popq %rax                       # Restore the file descriptor
+    ret
+
+utils_open_file_err:
+    cmp $ENOENT, %rax
+    je utils_open_file_err_file_doesnt_exist
+    movq $-1, %rax
+    leaq .err_msg_open_file_generic(%rip), %rdi
+    movq $ERR_MSG_OPEN_FILE_GENERIC_LEN, %rsi
+    ret
+
+utils_open_file_err_file_doesnt_exist:
+    leaq .err_msg_file_doesnt_exist(%rip), %rdi
+    movq $ERR_MSG_FILE_DOESNT_EXIST_LEN, %rsi
+    ret
+
+# Role
+# ----
+# Allocate space to store input file content, tokens and the expression structure
+# Note: this function is to be called only once
+#
+# Expected
+# --------
+# 1. The input file descriptor is in %rdi
+# 2. The number of bytes in the file is in %rsi
+#
+# Result
+# ------
+# 1. In the case of a success, the addresses of the locations to store the input file content,
+#    the tokens and the expression structure are in %rax, %rdi and %rsi respectively
+# 2. In the case of an error, -1 in %rax, the error string in %rdi, the error length in %rsi
+#
+# Definitions
+# -----------
+# In the comments, n means number of bytes in the file
+# In the following,
+#   %r14 holds the input file descriptor
+#   %r15 holds the number of bytes in the input file
+#   %rax either holds the syscall number for brk or the top of the data segment
+#   %r8 temporarily holds the address of the input file content buffer
+.equ SYS_BRK, 12
+.equ ENOMEM, -12
+utils_alloc:
+    movq %rdi, %r14         # Saving the input file descriptor in %r14
+    movq %rsi, %r15         # Saving the number of bytes in the file in %r15
+    movq $SYS_BRK, %rax
+    movq $-1, %rdi
+    syscall                 # To find the current position of the data segment
+    cmp $0, %rax
+    je utils_alloc_err      
+    movq %rax, %r8          # Saving the address of the data segment top in %r8
+    incq %r8                # %r8 now contains the address of the data segment top. The next address is the input file content base
+    addq %r15, %rax         # Increase the data segment by file length, to create space for the file
+    movq %rax, %rdi         # To become the new top of data segment
+    movq $SYS_BRK, %rax     # To create space for the file contents
+    syscall
+    cmp $0, %rax
+    jl utils_alloc_err
+    movq %r8, %rax          # The base address of the input file contents
+    movq $TOKEN_SIZE, %r13
+    imul %r15, %r13         # Number of bytes to store n tokens (tokens can't be more than that)
+    movq %rdi, %rsi
+    incq %rsi               # The address to be returned as the base of the token array
+    addq %r13, %rdi         # To become the new top of data segment
+    movq $SYS_BRK, %rax
+    syscall
+    cmp $0, %rax
+    jl utils_alloc_err
+    movq %r8, %rax
+    movq %rsi, %rdi
+    ret
+    
+utils_alloc_err:
+    cmp $ENOMEM, %rax
+    je utils_alloc_err_no_memory
+    movq $-1, %rax
+    leaq .err_msg_alloc_generic(%rip), %rax
+    movq $ERR_MSG_ALLOC_GENERIC, %rdi
+    ret
+
+utils_alloc_err_no_memory:
+    movq $-1, %rax
+    leaq .err_msg_alloc_no_memory(%rip), %rax
+    movq $ERR_MSG_ALLOC_NO_MEMORY_LEN, %rdi
+    ret
+
 
 # Role
 # ----

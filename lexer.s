@@ -119,3 +119,8 @@
 # 1. Load the address of the next position in the vector into %r12
 # 2. Move %r15b, %r14 into the location specified by %r12
 # 3. Increase the vector's length field by 1
+
+# The size of a token in bytes
+# Used by the allocator to determine how
+# much space should be reserved for the token array
+.equ TOKEN_SIZE, 9

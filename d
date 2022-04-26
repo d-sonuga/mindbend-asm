@@ -1,0 +1,1 @@
+~^^^^^^666^^^^^^^^^^^^666^^^^^^=O\\|//\\|//\\|//label:freaky:label:ghl:label:hbfnhuzbfnukfbmud:jump:dd:ijump:34eedsdf:0123456789ABCDE->L->C$<>$`$*$($)$#$@$!$+$A$B$C$D$E^^^^^^666^^^^^^=O

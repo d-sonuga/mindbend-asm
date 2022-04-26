@@ -303,14 +303,14 @@ utils_read_file_err:
 #   %r8 temporarily holds the address of the input file content buffer
 .equ SYS_BRK, 12
 .equ ENOMEM, -12
-utils_alloc:
+utils_alloc_main_space:
     movq %rdi, %r14         # Saving the input file descriptor in %r14
     movq %rsi, %r15         # Saving the number of bytes in the file in %r15
     movq $SYS_BRK, %rax
     movq $-1, %rdi
     syscall                 # To find the current position of the data segment
     cmp $0, %rax
-    je utils_alloc_err      
+    jl utils_alloc_err      
     movq %rax, %r8          # Saving the address of the data segment top in %r8
     incq %r8                # %r8 now contains the address of the data segment top. The next address is the input file content base
     addq %r15, %rax         # Increase the data segment by file length, to create space for the file
@@ -332,7 +332,37 @@ utils_alloc:
     movq %r8, %rax
     movq %rsi, %rdi
     ret
-    
+
+# Role
+# ----
+# Allocate space arbitrarily
+#
+# Expected
+# --------
+# 1. The amount of space in bytes is in %rdi
+#
+# Result
+# ------
+# 1. In the case of a success, the address of the allocated space is in %rax
+# 2. In the case of an error, -1 in %rax, the error string in %rdi, the error length in %rsi
+utils_alloc:
+    pushq %rdi              # Save the number of bytes to allocate
+    movq $SYS_BRK, %rax
+    movq $-1, %rdi          # To get the current top of the data segment
+    syscall
+    cmp $0, %rax
+    jl utils_alloc_err
+    movq %rax, %r8
+    incq %r8                # The current top of data segment + 1 will become the base of the space allocated
+    popq %rdi               # Restore the number of bytes to allocate
+    addq %rax, %rdi         # To become the new top of data segment
+    movq $SYS_BRK, %rax
+    syscall
+    cmp $0, %rax
+    jl utils_alloc_err
+    movq %r8, %rax          # The base address of the newly allocated space
+    ret    
+
 utils_alloc_err:
     cmp $ENOMEM, %rax
     je utils_alloc_err_no_memory

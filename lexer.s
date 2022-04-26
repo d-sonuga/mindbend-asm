@@ -122,6 +122,26 @@
     .equ ERR_MSG_TOKENIZE_ERR_UNRECOGNIZED_TOKEN_LEN, 42
     .asciz "Unrecognized token at position n. Find n.\n"
 
+.err_msg_tokenize_empty_label:
+    .equ ERR_MSG_TOKENIZE_EMPTY_LABEL_LEN, 26
+    .asciz "Empty label at n. Find n.\n"
+
+.err_msg_tokenize_malformed_label:
+    .equ ERR_MSG_TOKENIZE_MALFORMED_LABEL_LEN, 30
+    .asciz "Malformed label at n. Find n.\n"
+
+.err_msg_tokenize_unrecognized_region_ident:
+    .equ ERR_MSG_TOKENIZE_UNRECOGNIZED_REGION_IDENT_LEN, 40
+    .asciz "Unrecognized region ident at n. Find n.\n"
+
+.err_msg_tokenize_unrecognized_primitive_ident:
+    .equ ERR_MSG_TOKENIZE_UNRECOGNIZED_PRIMITIVE_IDENT_LEN, 43
+    .asciz "Unrecognized primitive ident at n. Find n.\n"
+
+.err_msg_org_expr_must_end_in_death:
+    .equ ERR_MSG_ORG_EXPR_MUST_END_IN_DEATH_LEN, 73
+    .asciz "Every mindbend program must end in the death of the Organism Expression.\n"
+
 .token_tilde_repr:
     .equ TOKEN_TILDE_REPR_LEN, 9
     .asciz "tilde(~)\n"
@@ -145,6 +165,54 @@
 .token_drill_repr:
     .equ TOKEN_DRILL_REPR_LEN, 13
     .asciz "drill(\\\\|//)\n"
+
+.token_label_repr_start:
+    .equ TOKEN_LABEL_REPR_START_LEN, 6
+    .asciz "label("
+
+.token_label_repr_end:
+    .equ TOKEN_LABEL_REPR_END_LEN, 2
+    .asciz ")\n"
+
+.token_jump_repr_start:
+    .equ TOKEN_JUMP_REPR_START_LEN, 5
+    .asciz "jump("
+
+.token_jump_repr_end:
+    .equ TOKEN_JUMP_REPR_END_LEN, 2
+    .asciz ")\n"
+
+.token_cjump_repr_start:
+    .equ TOKEN_CJUMP_REPR_START_LEN, 6
+    .asciz "ijump("
+
+.token_cjump_repr_end:
+    .equ TOKEN_CJUMP_REPR_END_LEN, 2
+    .asciz ")\n"
+
+.token_cell_ident_repr_start:
+    .equ TOKEN_CELL_IDENT_REPR_START_LEN, 11
+    .asciz "cell ident("
+
+.token_cell_ident_repr_end:
+    .equ TOKEN_CELL_IDENT_REPR_END_LEN, 2
+    .asciz ")\n"
+
+.token_region_ident_repr_start:
+    .equ TOKEN_REGION_IDENT_REPR_START_LEN, 13
+    .asciz "region ident("
+
+.token_region_ident_repr_end:
+    .equ TOKEN_REGION_IDENT_REPR_END_LEN, 2
+    .asciz ")\n"
+
+.token_primitive_ident_repr_start:
+    .equ TOKEN_PRIMITIVE_IDENT_REPR_START_LEN, 16
+    .asciz "primitive ident("
+
+.token_primitive_ident_repr_end:
+    .equ TOKEN_PRIMITIVE_IDENT_REPR_END_LEN, 2
+    .asciz ")\n"
 
 # The size of a token in bytes
 # Used by the allocator to determine how
@@ -194,6 +262,44 @@ lexer_tokenize_loop:
     je lexer_tokenize_drill
     cmp $'l', %r10b
     je lexer_tokenize_label
+    cmp $'j', %r10b
+    je lexer_tokenize_jump
+    cmp $'i', %r10b
+    je lexer_tokenize_conditional_jump
+    cmp $'-', %r10b
+    je lexer_tokenize_region_ident
+    cmp $'$', %r10b
+    je lexer_tokenize_primitive_ident
+    cmp $'0', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'1', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'2', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'3', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'4', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'5', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'6', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'7', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'8', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'9', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'A', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'B', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'C', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'D', %r10b
+    je lexer_tokenize_cell_ident
+    cmp $'E', %r10b
+    je lexer_tokenize_cell_ident
     cmp $EOF, %r10b
     je lexer_tokenize_loop_end
     jmp lexer_tokenize_err_unrecognized_token
@@ -207,13 +313,20 @@ lexer_tokenize_leach:
 lexer_tokenize_triple_six:
     movq $0, %r11           # Starting from 0
     movq $5, %r12           # Stopping at 5, meaning check for '^' %r12 - %r11 times
+    movq $0, %rax           # In case there are any errors
     call lexer_tokenize_triple_six_carets_loop
+    cmp $0, %rax
+    jl lexer_return         # If error, return it
     movq $0, %r11           # Same as in previous loop
     movq $3, %r12
     call lexer_tokenize_triple_six_middle_sixes_loop
+    cmp $0, %rax
+    jl lexer_return         # If error, return it
     movq $0, %r11           # Same as in previous loop
     movq $6, %r12
     call lexer_tokenize_triple_six_carets_loop
+    cmp $0, %rax
+    jl lexer_return         # If error, return it
     movq %r9, %r11
     incq %r11
     je lexer_append_triple_six_and_end
@@ -275,6 +388,8 @@ lexer_tokenize_triple_six_carets_loop:
     movb (%rdi, %r9, 1), %r10b
     cmp $' ', %r10b
     je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
+    je lexer_tokenize_err_whitespace
     cmp $'^', %r10b
     jne lexer_tokenize_err_unrecognized_token
     incq %r11
@@ -291,6 +406,8 @@ lexer_tokenize_triple_six_middle_sixes_loop:
     je lexer_tokenize_err_unrecognized_token
     movb (%rdi, %r9, 1), %r10b
     cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
     je lexer_tokenize_err_whitespace
     cmp $'6', %r10b
     jne lexer_tokenize_err_unrecognized_token
@@ -322,36 +439,401 @@ lexer_tokenize_drill_check_for_errors:
     incq %r9
     cmp %r9, %rsi
     je lexer_tokenize_err_unrecognized_token
-
     movb (%rdi, %r9, 1), %r10b
     cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
     je lexer_tokenize_err_whitespace
     ret
     
 lexer_repeat_tokenize_loop:
     incq %r9
-    cmp %r9, %rsi
+    cmp %r9, %rsi                   # Is the current input string index equal to the length of the input string?
     je lexer_tokenize_loop_end
     jmp lexer_tokenize_loop
 
 lexer_tokenize_loop_end:
+    movq %rbx, %r9
+    decq %r9                                    # Index of the last token
+    imul $TOKEN_SIZE, %r9                       
+    addq %rdx, %r9                              # Address of the last token
+    movb (%r9), %r9b
+    cmp $TRIPLE_SIX_EQ_O, %r9b                  # Last token should be ^^^^^^666^^^^^^=O
+    jne lexer_err_org_expr_must_end_in_death
     call lexer_print_tokens
-    movq %rbx, %rax             # The number of tokens
+    movq %rbx, %rax                             # The number of tokens
     ret
 
 lexer_tokenize_label:
-    
+    movq $0, %rax
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'a', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'b', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    cmp $0, %rax
+    jl lexer_return
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'e', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'l', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $':', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    xor %r12, %r12
+    movq $LABEL, %r12
+    jmp lexer_tokenize_lji_name
+
+lexer_tokenize_jump:
+    movq $0, %rax
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'u', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'m', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    cmp $0, %rax
+    jl lexer_return
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'p', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $':', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    xor %r12, %r12
+    movq $JUMP, %r12
+    jmp lexer_tokenize_lji_name
+
+lexer_tokenize_conditional_jump:
+    movq $0, %rax
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'j', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'u', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'m', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    cmp $0, %rax
+    jl lexer_return
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $'p', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    call lexer_tokenize_lji_next_char
+    cmp $0, %rax
+    jl lexer_return
+    cmp $':', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    xor %r12, %r12
+    movq $CJUMP, %r12
+    jmp lexer_tokenize_lji_name
+
+lexer_tokenize_cell_ident:
+    pushq %rdi
+    movq $2, %rdi                       # Space for the single letter cell ident and a null byte
+    call utils_alloc
+    popq %rdi
+    cmp $0, %rax
+    jl lexer_return
+    movb %r10b, (%rax)                   # Store the cell ident
+    movb $0, 1(%rax)                    # Null terminate it
+    movb $CELL_IDENT, %r14b
+    movq %rax, %r15
+    call lexer_append_token
+    jmp lexer_repeat_tokenize_loop
+
+lexer_tokenize_region_ident:
+    incq %r9
+    cmp %r9, %rsi
+    je lexer_tokenize_err_unrecognized_token
+    movb (%rdi, %r9, 1), %r10b
+    cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'>', %r10b
+    jne lexer_tokenize_err_unrecognized_token
+    incq %r9
+    cmp %r9, %rsi
+    je lexer_tokenize_err_unrecognized_token
+    movb (%rdi, %r9, 1), %r10b
+    cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace 
+    cmp $'\n', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'C', %r10b
+    je lexer_tokenize_region_ident_name
+    cmp $'L', %r10b
+    je lexer_tokenize_region_ident_name
+    jne lexer_tokenize_err_unrecognized_region_ident
+
+lexer_tokenize_region_ident_name:
+    pushq %rdi
+    movq $2, %rdi
+    call utils_alloc
+    movb %r10b, (%rax)          # Save the region identifier name in the location allocated for it
+    movb $0, 1(%rax)            # Null terminate it
+    movb $REGION_IDENT, %r14b
+    movq %rax, %r15
+    call lexer_append_token
+    popq %rdi
+    jmp lexer_repeat_tokenize_loop
+
+lexer_tokenize_primitive_ident:
+    incq %r9
+    cmp %r9, %rsi
+    je lexer_tokenize_err_unrecognized_primitive_ident
+    movb (%rdi, %r9, 1), %r10b
+    cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
+    je lexer_tokenize_err_whitespace
+    movq $1, %r12                           # The default length of the identifier
+    cmp $'!', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'@', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'#', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'+', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'%', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'`', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'&', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'*', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'(', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $')', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'{', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'}', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'0', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'1', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'2', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'3', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'4', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'5', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'6', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'7', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'8', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'9', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'A', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'B', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'C', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'D', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'E', %r10b
+    je lexer_tokenize_primitive_ident_name
+    cmp $'>', %r10b
+    je lexer_tokenize_primitive_ident_great_less_name
+    cmp $'<', %r10b
+    je lexer_tokenize_primitive_ident_less_great_name
+    jmp lexer_tokenize_err_unrecognized_primitive_ident
+
+lexer_tokenize_primitive_ident_name:
+    pushq %rdi
+    movq $2, %rdi
+    call utils_alloc
+    cmp $0, %rax
+    jl lexer_return
+    movb %r10b, (%rax)
+    movb $0, 1(%rax)
+    movb $PRIMITIVE_IDENT, %r14b
+    movq %rax, %r15
+    call lexer_append_token
+    popq %rdi
+    jmp lexer_repeat_tokenize_loop
+
+lexer_tokenize_primitive_ident_great_less_name:
+    pushq $'>'
+    incq %r9
+    cmp %r9, %rsi
+    je lexer_tokenize_err_unrecognized_primitive_ident
+    movb (%rdi, %r9, 1), %r10b
+    cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'<', %r10b
+    jne lexer_tokenize_err_unrecognized_primitive_ident
+    pushq $'<'
+    jmp lexer_tokenize_primitive_ident_append_double_len_primitive
+
+lexer_tokenize_primitive_ident_less_great_name:
+    pushq $'<'
+    incq %r9
+    cmp %r9, %rsi
+    je lexer_tokenize_err_unrecognized_primitive_ident
+    movb (%rdi, %r9, 1), %r10b
+    cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'>', %r10b
+    pushq $'>'
+    jne lexer_tokenize_err_unrecognized_primitive_ident
+    jmp lexer_tokenize_primitive_ident_append_double_len_primitive
+
+lexer_tokenize_primitive_ident_append_double_len_primitive:
+    pushq %rdi
+    movq $3, %rdi
+    call utils_alloc
+    cmp $0, %rax
+    jl lexer_return
+    popq %rdi
+    popq %r12                       # The second letter in the identifier
+    popq %r10                       # The first letter in the identifier
+    movb %r10b, (%rax)
+    movb %r12b, 1(%rax)
+    movb $0, 2(%rax)
+    movb $PRIMITIVE_IDENT, %r14b
+    movq %rax, %r15
+    call lexer_append_token
+    jmp lexer_repeat_tokenize_loop
+
+lexer_tokenize_lji_next_char:
+    incq %r9
+    cmp %r9, %rsi
+    je lexer_tokenize_err_unrecognized_token
+    movb (%rdi, %r9, 1), %r10b
+    cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $EOF, %r10b
+    je lexer_tokenize_err_malformed_label
+    ret
+
+lexer_tokenize_lji_name:
+    incq %r9
+    cmp %r9, %rsi
+    je lexer_tokenize_err_unrecognized_token
+    movb (%rdi, %r9, 1), %r10b
+    cmp $':', %r10b                                 # Ought to be the beginning of the label name
+    je lexer_tokenize_err_empty_label
+    movq %r9, %r13                                  # Initializing the string index to it's index in the input
+    movq $0, %rax                                   # In case the next command returns an error
+    call lexer_calc_name_len_loop                   # Calculate name length and stores it in %r13
+    cmp $0, %rax
+    jl lexer_return                                 # If error, return
+    call lexer_store_name                           # Allocate space and store the name in it. Address in %rax
+    movb %r12b, %r14b
+    movq %rax, %r15
+    call lexer_append_token
+    jmp lexer_repeat_tokenize_loop
+
+lexer_calc_name_len_loop:
+    cmp %rsi, %r13
+    je lexer_tokenize_err_malformed_label
+    movb (%rdi, %r13, 1), %r10b
+    cmp $':', %r10b
+    je lexer_calc_name_len_loop_end
+    cmp $' ', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $'\n', %r10b
+    je lexer_tokenize_err_whitespace
+    cmp $EOF, %r10b
+    je lexer_tokenize_err_malformed_label
+    incq %r13
+    jmp lexer_calc_name_len_loop
+
+lexer_calc_name_len_loop_end:
+    subq %r9, %r13          # Last index + 1 - first index = length
+    ret
+
+lexer_store_name:
+    pushq %rdi          # Save the input string's address
+    pushq %r13          # Save the number of bytes the label name has
+    movq %r13, %rdi     # The number of bytes the label name has
+    incq %rdi           # Allocating space for n + 1, to accomodate a terminating null byte
+    call utils_alloc    # %rax will contain the address of the string to place the name in
+    cmp $0, %rax
+    jl lexer_return     # If error, return the error
+    popq %r13           # Restore the byte number
+    popq %rdi           # Restore the input string's address
+    movq $0, %r8        # Starting index
+    jmp lexer_copy_name_into_string_loop
+
+lexer_copy_name_into_string_loop:
+    cmp %r8, %r13               # Is the current index equal to the number of bytes?
+    je lexer_copy_name_into_string_loop_end
+    movq %r8, %r11
+    addq %r9, %r11              #  Base index of label name in program (%r9) + current index of label name (%r11) = Index of letter in the whole input string
+    movb (%rdi, %r11, 1), %r10b
+    movb %r10b, (%rax, %r8, 1)
+    incq %r8
+    jmp lexer_copy_name_into_string_loop
+
+lexer_copy_name_into_string_loop_end:
+    addq %r8, %r9                   # Update %r9 to point to the ':' at the end of the label name
+    movb $0,  %r10b
+    movb %r10b, (%rax, %r8, 1)      # Null terminating the string
+    ret
+
+lexer_return:
+    ret
 
 lexer_append_token:
-    movq %rbx, %r12
-    imul $TOKEN_SIZE, %r12
-    addq %rdx, %r12             # Calculating the location of the current index
+    pushq %r12
+    movq %rbx, %r12             # Current length of the token array
+    imul $TOKEN_SIZE, %r12      # The amount of space the token array is currently taking up, in bytes
+    addq %rdx, %r12             # Address of token buffer (%rdx) + Token array space = location to append token
     movb %r14b, (%r12)
     incq %r12
     movq %r15, (%r12)
     movq $0, %r14
     movq $0, %r15
     incq %rbx
+    popq %r12
     ret
 
 lexer_tokenize_err_whitespace:
@@ -366,6 +848,36 @@ lexer_tokenize_err_unrecognized_token:
     movq $-1, %rax
     ret
 
+lexer_tokenize_err_empty_label:
+    leaq .err_msg_tokenize_empty_label(%rip), %rdi
+    movq $ERR_MSG_TOKENIZE_EMPTY_LABEL_LEN, %rsi
+    movq $-1, %rax
+    ret
+
+lexer_tokenize_err_malformed_label:
+    leaq .err_msg_tokenize_malformed_label(%rip), %rdi
+    movq $ERR_MSG_TOKENIZE_MALFORMED_LABEL_LEN, %rsi
+    movq $-1, %rax
+    ret
+
+lexer_tokenize_err_unrecognized_region_ident:
+    leaq .err_msg_tokenize_unrecognized_region_ident(%rip), %rdi
+    movq $ERR_MSG_TOKENIZE_UNRECOGNIZED_REGION_IDENT_LEN, %rsi
+    movq $-1, %rax
+    ret
+
+lexer_tokenize_err_unrecognized_primitive_ident:
+    leaq .err_msg_tokenize_unrecognized_primitive_ident(%rip), %rdi
+    movq $ERR_MSG_TOKENIZE_UNRECOGNIZED_PRIMITIVE_IDENT_LEN, %rsi
+    movq $-1, %rax
+    ret
+
+lexer_err_org_expr_must_end_in_death:
+    leaq .err_msg_org_expr_must_end_in_death(%rip), %rdi
+    movq $ERR_MSG_ORG_EXPR_MUST_END_IN_DEATH_LEN, %rsi
+    movq $-1, %rax
+    ret
+
 # Role
 # ----
 # Prints tokens for debugging
@@ -374,6 +886,7 @@ lexer_print_tokens:
     pushq %r9           # Save %r9
     pushq %rdi
     pushq %rsi
+    pushq %r10
     movq $0, %r8        # Initialize token array index
     movq $0, %r9
     jmp lexer_print_tokens_loop
@@ -384,7 +897,9 @@ lexer_print_tokens_loop:
     movq %r8, %r12
     imul $TOKEN_SIZE, %r12
     addq %rdx, %r12             # Calculating the location of the current index
-    movb (%r12), %r9b
+    movb (%r12), %r9b           # The token field
+    incq %r12
+    movq (%r12), %r10          # The associated string address field, if any
     cmp $TILDE, %r9b
     je lexer_print_token_tilde
     cmp $TRIPLE_SIX, %r9b
@@ -397,6 +912,18 @@ lexer_print_tokens_loop:
     je lexer_print_token_triple_six_eq_m
     cmp $DRILL, %r9b
     je lexer_print_token_drill
+    cmp $LABEL, %r9b
+    je lexer_print_token_label
+    cmp $JUMP, %r9b
+    je lexer_print_token_jump
+    cmp $CJUMP, %r9b
+    je lexer_print_token_cjump
+    cmp $CELL_IDENT, %r9b
+    je lexer_print_token_cell_ident
+    cmp $REGION_IDENT, %r9b
+    je lexer_print_token_region_ident
+    cmp $PRIMITIVE_IDENT, %r9b
+    je lexer_print_token_primitive_ident
 
 lexer_print_token_tilde:
     leaq .token_tilde_repr(%rip), %rdi
@@ -427,7 +954,139 @@ lexer_print_token_drill:
     leaq .token_drill_repr(%rip), %rdi
     movq $TOKEN_DRILL_REPR_LEN, %rsi
     jmp lexer_print_token
+
+lexer_print_token_label:
+    leaq .token_label_repr_start(%rip), %rdi
+    movq $TOKEN_LABEL_REPR_START_LEN, %rsi
+    pushq %r8
+    pushq %rdi
+    pushq %rdx
+    call utils_print
+    movq %r10, %rdi         # Address of the label
+    pushq %r8
+    pushq %r9
+    call utils_strlen
+    popq %r8
+    popq %r9
+    movq %rax, %rsi         # Length of the label
+    call utils_print
+    popq %rdx
+    popq %rdi
+    popq %r8
+    leaq .token_label_repr_end(%rip), %rdi
+    movq $TOKEN_LABEL_REPR_END_LEN, %rsi
+    jmp lexer_print_token
     
+lexer_print_token_jump:
+    leaq .token_jump_repr_start(%rip), %rdi
+    movq $TOKEN_JUMP_REPR_START_LEN, %rsi
+    pushq %r8
+    pushq %rdi
+    pushq %rdx
+    call utils_print
+    movq %r10, %rdi         # Address of the identifier
+    pushq %r8
+    pushq %r9
+    call utils_strlen
+    popq %r8
+    popq %r9
+    movq %rax, %rsi         # Length of the identifier
+    call utils_print
+    popq %rdx
+    popq %rdi
+    popq %r8
+    leaq .token_jump_repr_end(%rip), %rdi
+    movq $TOKEN_JUMP_REPR_END_LEN, %rsi
+    jmp lexer_print_token
+
+lexer_print_token_cjump:
+    leaq .token_cjump_repr_start(%rip), %rdi
+    movq $TOKEN_CJUMP_REPR_START_LEN, %rsi
+    pushq %r8
+    pushq %rdi
+    pushq %rdx
+    call utils_print
+    movq %r10, %rdi         # Address of the identifier
+    pushq %r8
+    pushq %r9
+    call utils_strlen
+    popq %r8
+    popq %r9
+    movq %rax, %rsi         # Length of the identifier
+    call utils_print
+    popq %rdx
+    popq %rdi
+    popq %r8
+    leaq .token_cjump_repr_end(%rip), %rdi
+    movq $TOKEN_CJUMP_REPR_END_LEN, %rsi
+    jmp lexer_print_token
+
+lexer_print_token_cell_ident:
+    leaq .token_cell_ident_repr_start(%rip), %rdi
+    movq $TOKEN_CELL_IDENT_REPR_START_LEN, %rsi
+    pushq %r8
+    pushq %rdi
+    pushq %rdx
+    call utils_print
+    movq %r10, %rdi         # Address of the identifier
+    pushq %r8
+    pushq %r9
+    call utils_strlen
+    popq %r8
+    popq %r9
+    movq %rax, %rsi         # Length of the identifier
+    call utils_print
+    popq %rdx
+    popq %rdi
+    popq %r8
+    leaq .token_cell_ident_repr_end(%rip), %rdi
+    movq $TOKEN_CELL_IDENT_REPR_END_LEN, %rsi
+    jmp lexer_print_token
+
+lexer_print_token_region_ident:
+    leaq .token_region_ident_repr_start(%rip), %rdi
+    movq $TOKEN_REGION_IDENT_REPR_START_LEN, %rsi
+    pushq %r8
+    pushq %rdi
+    pushq %rdx
+    call utils_print
+    movq %r10, %rdi         # Address of the identifier
+    pushq %r8
+    pushq %r9
+    call utils_strlen
+    popq %r8
+    popq %r9
+    movq %rax, %rsi         # Length of the identifier
+    call utils_print
+    popq %rdx
+    popq %rdi
+    popq %r8
+    leaq .token_region_ident_repr_end(%rip), %rdi
+    movq $TOKEN_REGION_IDENT_REPR_END_LEN, %rsi
+    jmp lexer_print_token
+
+lexer_print_token_primitive_ident:
+    leaq .token_primitive_ident_repr_start(%rip), %rdi
+    movq $TOKEN_PRIMITIVE_IDENT_REPR_START_LEN, %rsi
+    pushq %r8
+    pushq %rdi
+    pushq %rdx
+    call utils_print
+    movq %r10, %rdi         # Address of the identifier
+    pushq %r8
+    pushq %r9
+    call utils_strlen
+    popq %r8
+    popq %r9
+    movq %rax, %rsi         # Length of the identifier
+    call utils_print
+    popq %rdx
+    popq %rdi
+    popq %r8
+    leaq .token_primitive_ident_repr_end(%rip), %rdi
+    movq $TOKEN_PRIMITIVE_IDENT_REPR_END_LEN, %rsi
+    jmp lexer_print_token
+
 lexer_print_token:
     pushq %r8
     pushq %rdi
@@ -440,8 +1099,41 @@ lexer_print_token:
     jmp lexer_print_tokens_loop
 
 lexer_print_tokens_loop_end:
+    popq %r10
     popq %rsi
     popq %rdi
     popq %r9
     popq %r8
     ret
+
+
+# Print call preamble and postamble
+    pushq %rax
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %rsi
+    pushq %rdx
+    call utils_printint
+    popq %rdx
+    popq %rsi
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rax
+
+
+    pushq %rax
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %rsi
+    pushq %rdx
+    movq %r10, %rdi
+    call utils_printint
+    popq %rdx
+    popq %rsi
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rax

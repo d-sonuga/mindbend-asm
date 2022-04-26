@@ -176,7 +176,7 @@ parse_cmd_line_args:
     movq %rax, %rdi                 # The input file descriptor
     pushq %rsi                      # The input file size
     pushq %rdi                      # Saving the input file descriptor
-    call utils_alloc
+    call utils_alloc_main_space
     cmp $-1, %rax
     je print_err_and_exit
     popq %rdi                       # Restoring the file descriptor
@@ -231,14 +231,12 @@ print_version_info_and_exit:
 exit_too_many_args:
     leaq .too_many_args_err_msg(%rip), %rdi
     movq $TOO_MANY_ARGS_ERR_MSG_LEN, %rsi
-    call utils_print
-    jmp exit_err
+    jmp print_err_and_usage_and_exit
 
 exit_too_few_args:
     leaq .too_few_args_err_msg(%rip), %rdi
     movq $TOO_FEW_ARGS_ERR_MSG_LEN, %rsi
-    call utils_print
-    jmp exit_err
+    jmp print_err_and_usage_and_exit
 
 exit_err:
     movq $60, %rax

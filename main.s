@@ -112,6 +112,7 @@
 .include "utils.s"
 .include "cmd_parser.s"
 .include "lexer.s"
+.include "parser.s"
 
 .section .data
 .usage_info:
@@ -194,9 +195,32 @@ parse_cmd_line_args:
 
 tokenize:
     call lexer_tokenize
+    cmp $0, %rax                    # Supposed to be number of tokens in token array
+    jl print_err_and_exit
+    pushq %rdx                      # Save address of token array
+    pushq %rax                      # Save number of tokens
+    
+    movq %rax, %rdi
+    imul $8, %rdi
+    call utils_alloc                # Space to store encountered labels in parser
     cmp $0, %rax
+    jl print_err_and_exit
+    popq %rdi                       # Number of tokens
+    pushq %rdi                      # Re-save the number of tokens
+    imul $8, %rdi
+    pushq %rax                      # Save address of space to store encountered labels
+    call utils_alloc
+    cmp $0, %rax
+    jl print_err_and_exit
+    movq %rax, %r10                 # Address of space for encountered jumps    
+    popq %rdx                       # Address of space for encountered labels
+    popq %rsi                       # Length of token array
+    popq %rdi                       # Address of token space
+    jmp parse
 
-
+parse:
+    call parser_parse
+    cmp $0, %rax
     jl print_err_and_exit
     jmp exit_success
 

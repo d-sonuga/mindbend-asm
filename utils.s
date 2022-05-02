@@ -58,6 +58,9 @@
     .equ ERR_MSG_READ_FILE_GENERIC_LEN, 79
     .asciz "Something went wrong while reading the input file. (It's probably your fault).\n"
 
+.newline:
+    .asciz "\n"
+
 .section .bss
 .char_to_print:
     .byte 0
@@ -78,6 +81,12 @@
 # 1. The address of the first character of the string is in %rdi
 # 2. The length of the string is in %rsi
 utils_print:
+    pushq %r8
+    pushq %r9
+    pushq %rax
+    pushq %rdx
+    pushq %rcx
+    pushq %r11
     movq %rdi, %r8          # Save the string address, because the file descriptor is going into %rdi
     movq %rsi, %r9          # Save the string length
     movq $1, %rax           # The system call to write
@@ -85,6 +94,22 @@ utils_print:
     movq %r8, %rsi
     movq %r9, %rdx
     syscall
+    popq %r11
+    popq %rcx
+    popq %rdx
+    popq %rax
+    popq %r9
+    popq %r8
+    ret
+
+utils_print_newline:
+    pushq %rdi
+    pushq %rsi
+    leaq .newline(%rip), %rdi
+    movq $1, %rsi
+    call utils_print
+    popq %rsi
+    popq %rdi
     ret
 
 # Role
@@ -99,6 +124,8 @@ utils_print:
 # ------
 # 1. The length of the string in %rax
 utils_strlen:
+    pushq %r8
+    pushq %r9
     movq $0, %r8                # Initializing the string index to 0
     jmp utils_strlen_loop
 utils_strlen_loop:
@@ -109,6 +136,8 @@ utils_strlen_loop:
     jmp utils_strlen_loop
 utils_end_strlen_loop:
     movq %r8, %rax
+    popq %r9
+    popq %r8
     ret
 
 # Role
@@ -125,6 +154,9 @@ utils_end_strlen_loop:
 # 1. In the case where the 2 strings are equal, 1 in %rax
 # 2. Else, 0 in %rax
 utils_streq:
+    pushq %r8
+    pushq %r9
+    pushq %r10
     movq $0, %r8            # Initialize the index to 0
     movq $1, %rax           # Initialize the strings_are_equal value to true
     jmp utils_streq_loop
@@ -138,9 +170,15 @@ utils_streq_loop:
     incq %r8
     jmp utils_streq_loop
 utils_streq_loop_end_fail:
+    popq %r10
+    popq %r9
+    popq %r8
     movq $0, %rax
     ret
 utils_streq_loop_end_success:
+    popq %r10
+    popq %r9
+    popq %r8
     ret
 
 # Role
@@ -166,6 +204,11 @@ utils_streq_loop_end_success:
 #   Print the value
 # Print a newline
 utils_printint:
+    pushq %r8           # Save whatever was here before
+    pushq %rdx
+    pushq %rsi
+    pushq %rcx
+    pushq %r11
     movq $0, %r8        # Digit count
     movq %rdi, %rax     # The number to print
     movq $10, %rdi      # The divisor
@@ -197,6 +240,11 @@ utils_end_printint:
     movq $1, %rsi
     call utils_print
     movq $0, %rax
+    popq %r11           # Restore whatever was here
+    popq %rcx
+    popq %rsi               
+    popq %rdx               
+    popq %r8
     ret
 
 # Role
@@ -279,7 +327,7 @@ utils_read_file_err:
 
 # Role
 # ----
-# Allocate space to store input file content, tokens and the expression structure
+# Allocate space to store input file content and tokens
 # Note: this function is to be called only once
 #
 # Expected
@@ -346,6 +394,10 @@ utils_alloc_main_space:
 # 1. In the case of a success, the address of the allocated space is in %rax
 # 2. In the case of an error, -1 in %rax, the error string in %rdi, the error length in %rsi
 utils_alloc:
+    pushq %r11
+    pushq %rcx
+    pushq %r8
+    pushq %rdi
     pushq %rdi              # Save the number of bytes to allocate
     movq $SYS_BRK, %rax
     movq $-1, %rdi          # To get the current top of the data segment
@@ -361,6 +413,10 @@ utils_alloc:
     cmp $0, %rax
     jl utils_alloc_err
     movq %r8, %rax          # The base address of the newly allocated space
+    popq %rdi
+    popq %r8
+    popq %rcx
+    popq %r11
     ret    
 
 utils_alloc_err:

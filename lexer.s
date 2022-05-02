@@ -30,8 +30,6 @@
 # region ident              - 1st byte: 10, next 8 bytes: address of string
 # primitive ident           - 1st byte: 11, next 8 bytes: address of string
 #
-# Token symbols are of the form LEXER_TOKEN_<token name> and they will alias their byte numbers
-#
 # Modus Operandi
 # --------------
 # In the following,
@@ -214,6 +212,11 @@
     .equ TOKEN_PRIMITIVE_IDENT_REPR_END_LEN, 2
     .asciz ")\n"
 
+.print_tokens_header:
+    .equ PRINT_TOKENS_HEADER_LEN, 8
+    .asciz "Tokens:\n"
+
+
 # The size of a token in bytes
 # Used by the allocator to determine how
 # much space should be reserved for the token array
@@ -238,6 +241,8 @@
 .equ CELL_IDENT, 9
 .equ REGION_IDENT, 10
 .equ PRIMITIVE_IDENT, 11
+
+.equ TOKEN_STRING_ADDR_OFFSET, 1
 
 .section .text
 lexer_tokenize:
@@ -362,10 +367,14 @@ lexer_tokenize_triple_six_eq_m:
 
 lexer_tokenize_triple_six_eq_o:
     incq %r9
+    movq %r9, %r15                          # Index of the next character
+    incq %r15
+    cmp %r15, %rsi
+    jne lexer_repeat_tokenize_loop          # Ignore all ^^^^^^666^^^^^^=O except the last one
     movb $TRIPLE_SIX_EQ_O, %r14b
     movq $0, %r15
     call lexer_append_token
-    jmp lexer_repeat_tokenize_loop
+    jmp lexer_tokenize_loop_end
 
 lexer_append_triple_six_and_end:
     movb $TRIPLE_SIX, %r14b
@@ -462,6 +471,7 @@ lexer_tokenize_loop_end:
     jne lexer_err_org_expr_must_end_in_death
     call lexer_print_tokens
     movq %rbx, %rax                             # The number of tokens
+    decq %rax                                   # The ^^^^^^666^^^^^^=O should be ignored
     ret
 
 lexer_tokenize_label:
@@ -887,6 +897,9 @@ lexer_print_tokens:
     pushq %rdi
     pushq %rsi
     pushq %r10
+    leaq .print_tokens_header(%rip), %rdi
+    movq $PRINT_TOKENS_HEADER_LEN, %rsi
+    call utils_print
     movq $0, %r8        # Initialize token array index
     movq $0, %r9
     jmp lexer_print_tokens_loop
@@ -1104,36 +1117,5 @@ lexer_print_tokens_loop_end:
     popq %rdi
     popq %r9
     popq %r8
+    call utils_print_newline
     ret
-
-
-# Print call preamble and postamble
-    pushq %rax
-    pushq %rdi
-    pushq %r8
-    pushq %r9
-    pushq %rsi
-    pushq %rdx
-    call utils_printint
-    popq %rdx
-    popq %rsi
-    popq %r9
-    popq %r8
-    popq %rdi
-    popq %rax
-
-
-    pushq %rax
-    pushq %rdi
-    pushq %r8
-    pushq %r9
-    pushq %rsi
-    pushq %rdx
-    movq %r10, %rdi
-    call utils_printint
-    popq %rdx
-    popq %rsi
-    popq %r9
-    popq %r8
-    popq %rdi
-    popq %rax

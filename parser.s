@@ -147,6 +147,10 @@
     .equ ERR_MSG_TRIPLE_SIX_NOT_EXPECTED_LEN, 59
     .asciz "^^^^^^666^^^^^^ not expected at the nth position. Find n.\n"
 
+.err_msg_jumps_to_non_existent_labels:
+    .equ ERR_MSG_JUMPS_TO_NON_EXISTENT_LABELS_LEN, 67
+    .asciz "Attempt to jump to non existent label at the nth position. Find n.\n"
+
 .org_expr_repr_start:
     .equ ORG_EXPR_REPR_START_LEN, 19
     .asciz "OrganismExpression("
@@ -385,10 +389,55 @@ parser_parse_loop_end:
     movb $NULL_EXPRESSION, (%rax)
     popq %r12
     movq %rax, ORG_EXPR_NEXT_ORG_OFFSET(%r12)   # Setting the last OrganismExpression's next to the null expression
+    call parser_check_if_all_jumps_exist
+    cmp $0, %rax
+    je parser_err_jumps_to_non_existent_labels
     call parser_print_encountered_labels
     call parser_print_encountered_jumps
     popq %rax                                   # The address of the base OrganismExpression pushed in the beginning
     call parser_print_org_expr
+    ret
+
+parser_check_if_all_jumps_exist:
+    movq $0, %r8                    # Initialize jump array index to 0
+    movq $1, %rax                   # Initialize result to true
+    jmp parser_check_if_all_jumps_exist_loop
+
+parser_check_if_all_jumps_exist_loop:
+    cmp %r8, %rbp                           # Have all the jumps being processed?
+    je parser_return
+    movq %r8, %r15
+    imul $8, %r15
+    addq %r10, %r15                     
+    movq (%r15), %r15                   # Address of current jump
+    movq $0, %r9                        # Initialize label array index to 0
+    movq $0, %rbx                       # Initialize current_jump_is_found to false
+    jmp parser_check_if_all_jumps_exist_inner_loop
+
+parser_check_if_all_jumps_exist_inner_loop:
+    cmp %r9, %r14                       # Have all the loops been processed?
+    je parser_check_if_all_jumps_exist_inner_loop_end_fail
+    movq %r9, %r13
+    imul $8, %r13
+    addq %rdx, %r13                      
+    movq (%r13), %r13                   # Address of current encountered label
+    movq %r15, %rdi
+    movq %r13, %rsi
+    call utils_streq
+    cmp $1, %rax
+    je parser_check_if_all_jumps_exist_inner_loop_end_success
+    incq %r9
+    jmp parser_check_if_all_jumps_exist_inner_loop
+
+parser_check_if_all_jumps_exist_inner_loop_end_success:
+    incq %r8
+    jmp parser_check_if_all_jumps_exist_loop
+
+parser_check_if_all_jumps_exist_inner_loop_end_fail:
+    movq $0, %rax
+    ret
+
+parser_check_if_all_jumps_exist_loop_end:
     ret
 
 parser_parse_loop_end_err_alloc:
@@ -682,7 +731,7 @@ parser_parse_cell_leach_expression:
     movq %rsp, %rbp
     movq $EXPRESSION_SIZE, %rdi
     call utils_alloc
-    jl parser_return                                    # For now
+    jl parser_parse_cell_leach_expression_return_err                                    # For now
     movb $CELL_EXPRESSION, (%rax)
     movq TOKEN_STRING_ADDR_OFFSET(%r15), %r13
     movq %r13, CELL_EXPR_IDENT_ADDR_OFFSET(%rax)        # Create CellExpression
@@ -691,7 +740,7 @@ parser_parse_cell_leach_expression:
     movq $LIST_NODE_SIZE, %rax                          # Space for 2 addresses
     call utils_alloc
     cmp $0, %rax
-    jl parser_return                                    # For now
+    jl parser_parse_cell_leach_expression_return_err    # For now
     movq %rax, %rbx                                     # Address of head of cells encountered circular linked list
     movq $0, (%rbx)                                     # Init value to 0
     movq $0, LIST_NEXT(%rbx)                            # Init next to 0
@@ -700,7 +749,7 @@ parser_parse_cell_leach_expression:
     movq $LIST_NODE_SIZE, %rax                          # Space for 2 addresses
     call utils_alloc
     cmp $0, %rax
-    jl parser_return                                    # For now
+    jl parser_parse_cell_leach_expression_return_err    # For now
     movq %rax, %rcx                                     # Address of head of region changes linked list
     movq $0, (%rcx)                                     # Init to 0
     movq $0, LIST_NEXT(%rcx)                            # Init next to 0
@@ -779,7 +828,7 @@ parser_parse_cell_leach_expression_chain:
     movq %r8, %r9
     incq %r9                                # Increase index of token array
     cmp TOKEN_ARRAY_LEN(%rbp), %r9          # Is this the last token
-    je parser_err_expected_cell_expr
+    je parser_parse_cell_leach_expr_chain_err_expected_cell_expr1
     pushq %r11
     pushq $1                                # Set is chain to true
     pushq %r15                              # Address of current token
@@ -787,14 +836,14 @@ parser_parse_cell_leach_expression_chain:
     imul $TOKEN_SIZE, %r9
     addq TOKEN_ARRAY_BASE_ADDR(%rbp), %r9
     cmpb $CELL_IDENT, (%r9)
-    jne parser_err_expected_cell_expr
+    jne parser_parse_cell_leach_expr_chain_err_expected_cell_expr2
     call parser_parse_cell_leach_encountered_cells_contains_cell    # Is the current cell in the cells encountered list?
     cmp $0, %rax                            # 0 means false, it's not there
     jne parser_parse_cell_leach_expression_chain_self_leach
     movq $EXPRESSION_SIZE, %rdi
     call utils_alloc
     cmp $0, %rax
-    jl parser_return                        # For now
+    jl parser_parse_cell_leach_expression_chain_return_err
     movq %rax, %r11                         # The address of left cell expression in the next call
     movb $CELL_EXPRESSION, (%r11)           # Create the cell expression 
     movq TOKEN_STRING_ADDR_OFFSET(%r15), %r13
@@ -802,7 +851,7 @@ parser_parse_cell_leach_expression_chain:
     movq $LIST_NODE_SIZE, %rdi              # Space for the next call's region changes
     call utils_alloc
     cmp $0, %rax
-    jl parser_return
+    jl parser_parse_cell_leach_expression_chain_return_err
     movq %rax, %rcx                         # The new region changes list
     movq $0, (%rcx)
     movq $0, LIST_NEXT(%rcx)
@@ -815,11 +864,11 @@ parser_parse_cell_leach_expression_chain:
     popq %r14
     popq %r11
     cmp $0, %rax
-    jne parser_return                       # For now
+    jne parser_return
     movq $EXPRESSION_SIZE, %rdi
     call utils_alloc
     cmp $0, %rax
-    jl parser_return                            # For now
+    jl parser_return
     movb $LEACH_EXPRESSION, (%rax)
     movq %r11, LEACH_EXPR_LEFT_EXPR_OFFSET(%rax)
     movq %rbx, LEACH_EXPR_RIGHT_EXPR_OFFSET(%rax)
@@ -828,6 +877,19 @@ parser_parse_cell_leach_expression_chain:
     movq $0, %rbx
     xchg %rax, %rbx
     ret
+
+parser_parse_cell_leach_expr_chain_err_expected_cell_expr1:
+    leaq .err_msg_expected_cell_expr(%rip), %rdi
+    movq $ERR_MSG_EXPECTED_CELL_EXPR_LEN, %rsi
+    movq $-1, %rax
+    ret
+
+parser_parse_cell_leach_expr_chain_err_expected_cell_expr2:
+    popq %rbx
+    popq %rbx
+    popq %rbx
+    popq %rbx
+    jmp parser_parse_cell_leach_expr_chain_err_expected_cell_expr1
 
 parser_parse_cell_leach_expression_chain_end:
     not %r14
@@ -840,21 +902,22 @@ parser_parse_leach_expression_loop_end:
     jmp parser_parse_leach_expression_append_last_cell_expression
 
 parser_parse_leach_expression_append_last_cell_expression:
+    pushq %rdx
     movq $EXPRESSION_SIZE, %rdi
     call utils_alloc
-    jl parser_return                            # For now
+    jl parser_parse_leach_expr_append_last_cell_expr_return_err
     movb $LEACH_EXPRESSION, (%rax)
     movq %r11, LEACH_EXPR_LEFT_EXPR_OFFSET(%rax)
     movq %rax, %rbx
     movq $EXPRESSION_SIZE, %rdi
     call utils_alloc                            # Space for right leach expression
     cmp $0, %rax
-    jl parser_return                            # For now
+    jl parser_parse_leach_expr_append_last_cell_expr_return_err
     movq %rax, %rdx                             # Right leach expression
     movq $EXPRESSION_SIZE, %rdi
     call utils_alloc
     cmp $0, %rax
-    jl parser_return                            # For now
+    jl parser_parse_leach_expr_append_last_cell_expr_return_err
     movb $CELL_EXPRESSION, (%rax)
     movq TOKEN_STRING_ADDR_OFFSET(%r15), %r13
     movq %r13, CELL_EXPR_IDENT_ADDR_OFFSET(%rax)
@@ -866,6 +929,11 @@ parser_parse_leach_expression_append_last_cell_expression:
     movb %r14b, LEACH_EXPR_IS_CHAIN_OFFSET(%rbx)
     movq $0, LEACH_EXPR_REGION_CHANGES_OFFSET(%rbx)     # The leach expression pointed to by %rbx now fully created
     movq $0, %rax                               # Successful result
+    popq %rdx
+    ret
+
+parser_parse_leach_expr_append_last_cell_expr_return_err:
+    popq %rdx
     ret
 
 parser_parse_leach_insert_cells_encountered:
@@ -1227,6 +1295,13 @@ parser_err_triple_six_eq_not_expected:
 parser_err_triple_six_not_expected:
     leaq .err_msg_triple_six_not_expected(%rip), %rdi
     movq $ERR_MSG_TRIPLE_SIX_NOT_EXPECTED_LEN, %rsi
+    popq %rax
+    movq $-1, %rax
+    ret
+
+parser_err_jumps_to_non_existent_labels:
+    leaq .err_msg_jumps_to_non_existent_labels(%rip), %rdi
+    movq $ERR_MSG_JUMPS_TO_NON_EXISTENT_LABELS_LEN, %rsi
     popq %rax
     movq $-1, %rax
     ret

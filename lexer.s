@@ -121,12 +121,12 @@
     .asciz "Unrecognized token at position n. Find n.\n"
 
 .err_msg_tokenize_empty_label:
-    .equ ERR_MSG_TOKENIZE_EMPTY_LABEL_LEN, 26
-    .asciz "Empty label at n. Find n.\n"
+    .equ ERR_MSG_TOKENIZE_EMPTY_LABEL_LEN, 34
+    .asciz "Empty label or jump at n. Find n.\n"
 
 .err_msg_tokenize_malformed_label:
-    .equ ERR_MSG_TOKENIZE_MALFORMED_LABEL_LEN, 30
-    .asciz "Malformed label at n. Find n.\n"
+    .equ ERR_MSG_TOKENIZE_MALFORMED_LABEL_LEN, 38
+    .asciz "Malformed label or jump at n. Find n.\n"
 
 .err_msg_tokenize_unrecognized_region_ident:
     .equ ERR_MSG_TOKENIZE_UNRECOGNIZED_REGION_IDENT_LEN, 40

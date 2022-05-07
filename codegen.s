@@ -50,7 +50,7 @@
 .equ CR_OFFSET, 16
 .equ CELLS_OFFSET, 24
 .preamble_code:
-    .equ PREAMBLE_CODE_LEN, 12161
+    .equ PREAMBLE_CODE_LEN, 13088
     .asciz "
 .section .data
 .primitive_access_gates_not_open_err_msg:
@@ -217,6 +217,7 @@ function_validation_routine_success:
 # Cell number, base address of args array on stack and number of args
 # will be placed in %r15, %r14 and %r13 respectively
 function_execution_routine:
+    pushq %r15                  # Saving the cell number so the cell can be killed at the end
     movq $0, %r12               # Starting index of args
     movq %rbp, %r9
     subq $24, %r9
@@ -336,7 +337,7 @@ function_execute_output_one_arg:
     movq %rbp, %r9
     subq $24, %r9
     imul $-1, %r11
-    movq (%r9, %r11, 8), %r10
+    movq (%r9, %r11, 8), %rdi
     call putchar
     jmp function_execute_end
 
@@ -372,10 +373,6 @@ function_execute_output_multiple_args:
     jmp function_execute_output_multiple_args
 
 function_execute_input:
-    movq (%r14, %r12, 8), %r15
-    call expression_life_validation_routine
-    cmp $-1, %rax
-    je function_execute_err_dead_arg
     decq %r12
     movq %r12, %rcx
     addq %r13, %r12
@@ -395,7 +392,13 @@ function_execute_input_end:
     jmp function_execute_end
 
 function_execute_end:
-    # call state_update_routine
+    movq $1, %r15
+    call state_update_routine
+    popq %r15
+    movq %rbp, %r9
+    subq $144, %r9
+    imul $-1, %r15
+    movq $0, (%r9, %r15, 8)
     movq $0, %r12
     movq %r13, %r10
     decq %r10
@@ -419,12 +422,47 @@ function_execute_kill_args_revive_last:
     jmp function_execute_kill_args_revive_last
 
 function_execute_err_dead_arg:
+    popq %r15
     leaq .function_execution_routine_err_death_expr_arg_err_msg(%rip), %rdi
     movq $FUNCTION_EXECUTION_ROUTINE_ERR_DEATH_EXPR_ARG_ERR_MSG_LEN, %rsi
     ret
 
 function_execute_return:
     movq $0, %rax
+    ret
+
+# The update TTSO arg is in %r15
+state_update_routine:
+    cmp $0, %r15
+    je state_update_routine_update_ttl
+    cmp $0, -8(%rbp)
+    je state_update_routine_update_ttl
+    decq -8(%rbp)
+    cmp $0, -8(%rbp)
+    jne state_update_routine_update_ttl
+    movq $0, (%rbp)
+    jmp state_update_routine_update_ttl
+
+state_update_routine_update_ttl:
+    pushq %r12
+    pushq %r13
+    movq $0, %r12
+    movq %rbp, %r13
+    subq $144, %r13
+    jmp state_update_routine_update_ttl_loop
+
+state_update_routine_update_ttl_loop:
+    cmp $0, (%r13, %r12, 8)
+    je state_update_routine_update_ttl_loop_repeat
+    decq (%r13, %r12, 8)
+    jmp state_update_routine_update_ttl_loop_repeat
+
+state_update_routine_update_ttl_loop_repeat:
+    decq %r12
+    cmp $-15, %r12
+    jne state_update_routine_update_ttl_loop
+    popq %r13
+    popq %r12
     ret
 
 init_data_landscape:
@@ -563,6 +601,19 @@ main:
     cmp $-1, %rax
     je print_err_and_exit
 "
+.call_sur_code:
+    .equ CALL_SUR_CODE_LEN, 49
+    .asciz "
+    movq $1, %r15
+    call state_update_routine
+"
+
+.call_sur_no_update_ttso_code:
+    .equ CALL_SUR_NO_UPDATE_TTSO_CODE_LEN, 49
+    .asciz "
+    movq $0, %r15
+    call state_update_routine
+"
 
 .change_region_to_cells_code:
     .equ CHANGE_REGION_TO_CELLS_CODE_LEN, 23
@@ -596,6 +647,10 @@ main:
 .jump_code_end:
     .equ JUMP_CODE_END_LEN, 1
     .asciz "\n"
+
+.cond_jump_code_start:
+    .equ COND_JUMP_CODE_START_LEN, 23
+    .asciz "\tcmp $0, -24(%rbp)\n\tje "
 
 .jump_end_success:
     .equ JUMP_END_SUCCESS_LEN, 17
@@ -784,6 +839,9 @@ codegen_code_region_expr_cells:
     popq %rdx
     popq %rsi
     popq %rdi
+    call codegen_code_sur_call
+    cmp $0, %rax
+    jl codegen_code_region_expr_err_write
     jmp codegen_code_loop_repeat
     
 codegen_code_region_expr_layers:
@@ -799,6 +857,9 @@ codegen_code_region_expr_layers:
     popq %rdx
     popq %rsi
     popq %rdi
+    call codegen_code_sur_call
+    cmp $0, %rax
+    jl codegen_code_region_expr_err_write
     jmp codegen_code_loop_repeat
 
 codegen_code_region_expr_err_write:
@@ -821,12 +882,24 @@ codegen_code_label_expr:
     movq LABEL_EXPR_NAME_ADDR_OFFSET(%r8), %rdi
     call utils_strlen
     movq %rax, %rdx
+    movq %rax, %r11         # Saving string length for later use
     movq %rdi, %rsi
     movq %r10, %rdi
     call utils_write_file
     cmp $0, %rax
     jl codegen_code_label_expr_err_write
-    movq %rdx, %r13                             # Save the label length
+    
+    movq %rsi, %rcx
+    popq %rdx                           # Length of labels array
+    popq %rsi                           # Address of labels array
+    call codegen_get_label_index_no
+    pushq %rsi
+    pushq %rdx
+    movq %rax, %rsi
+    movq %rsi, %r12                     # Saving for later user
+    call utils_write_int_file
+
+    movq %r11, %r13                             # Save the label length
     leaq .jump_to_label_code_end(%rip), %rsi
     movq $JUMP_TO_LABEL_CODE_END_LEN, %rdx
     call utils_write_file
@@ -837,6 +910,12 @@ codegen_code_label_expr:
     call utils_write_file
     cmp $0, %rax
     jl codegen_code_label_expr_err_write
+
+    movq %r12, %rsi
+    call utils_write_int_file
+    cmp $0, %rax
+    jl codegen_code_label_expr_err_write
+
     leaq .label_code_end(%rip), %rsi
     movq $LABEL_CODE_END_LEN, %rdx
     call utils_write_file
@@ -859,11 +938,24 @@ codegen_code_jump_expr:
     pushq %rsi
     pushq %rdx
     movq %r10, %rdi
+    cmpb $1, JUMP_EXPR_IS_COND_OFFSET(%r8)
+    je codegen_code_cond_jump_expr
     leaq .jump_code_start(%rip), %rsi
     movq $JUMP_CODE_START_LEN, %rdx
     call utils_write_file
     cmp $0, %rax
     jl codegen_code_jump_expr_err_write
+    jmp codegen_code_jump_expr_end
+
+codegen_code_cond_jump_expr:
+    leaq .cond_jump_code_start(%rip), %rsi
+    movq $COND_JUMP_CODE_START_LEN, %rdx
+    call utils_write_file
+    cmp $0, %rax
+    jl codegen_code_jump_expr_err_write
+    jmp codegen_code_jump_expr_end
+
+codegen_code_jump_expr_end:
     movq JUMP_EXPR_NAME_ADDR_OFFSET(%r8), %rdi
     call utils_strlen
     movq %rdi, %rsi
@@ -872,6 +964,16 @@ codegen_code_jump_expr:
     call utils_write_file
     cmp $0, %rax
     jl codegen_code_jump_expr_err_write
+    movq %rsi, %rcx
+    popq %rdx                           # Length of labels array
+    popq %rsi                           # Address of labels array
+    call codegen_get_label_index_no
+    pushq %rsi
+    pushq %rdx
+    movq %rax, %rsi
+    movq %rsi, %r12                     # Saving for later user
+    call utils_write_int_file
+
     leaq .jump_code_end(%rip), %rsi
     movq $JUMP_CODE_END_LEN, %rdx
     call utils_write_file
@@ -887,6 +989,35 @@ codegen_code_jump_expr_err_write:
     movq $-1, %rax
     ret
 
+codegen_get_label_index_no:
+    pushq %rdi
+    pushq %r9
+    pushq %rsi
+    pushq %r11
+    movq %rsi, %r9              # Address of labels array
+    movq $0, %r11               # Initialize array index to 0
+    jmp codegen_get_label_index_no_loop
+
+codegen_get_label_index_no_loop:
+    movq %rcx, %rdi
+    movq %r11, %rsi
+    imul $8, %rsi
+    addq %r9, %rsi                      # Address of string at the %r11th index
+    movq (%rsi), %rsi
+    call utils_streq
+    cmp $1, %rax
+    je codegen_get_label_index_no_loop_end
+    incq %r11
+    jmp codegen_get_label_index_no_loop
+
+codegen_get_label_index_no_loop_end:
+    movq %r11, %rax
+    popq %r11
+    popq %rsi
+    popq %r9
+    popq %rdi
+    ret
+
 codegen_code_drill_expr:
     pushq %rdi
     pushq %rsi
@@ -900,6 +1031,9 @@ codegen_code_drill_expr:
     popq %rdx
     popq %rsi
     popq %rdi
+    call codegen_code_sur_no_update_ttso_call
+    cmp $0, %rax
+    jl codegen_code_drill_expr_err_write
     jmp codegen_code_loop_repeat
 
 codegen_code_drill_expr_err_write:
@@ -1129,6 +1263,7 @@ codegen_code_leach_primitive_expr_store:
     andq $0xff, %rsi
     subq $48, %rsi
     movq %rsi, %r15                         # Storing cell number in %r15 to update TLL table afterwards
+    movq %rsi, %r9                          # Making another copy to set expression life after SUR
     andq $0xff, %r15
     imul $-8, %rsi
     subq $CELLS_OFFSET, %rsi                # Cell offset from base pointer in generated code
@@ -1141,6 +1276,7 @@ codegen_code_leach_primitive_store_hex_cell:
     subq $65, %rsi
     addq $10, %rsi                           # Cell number
     movq %rsi, %r15                          # Storing cell number in %r15 to update TTL table afterwards
+    movq %rsi, %r9                           # Making another copy to set expression life after SUR
     andq $0xff, %r15
     imul $-8, %rsi
     subq $CELLS_OFFSET, %rsi                 # Cell offset from base pointer in generated code
@@ -1175,6 +1311,39 @@ codegen_code_leach_primitive_store_end:
     call utils_write_int_file
     cmp $0, %rax
     jl codegen_code_leach_expr_err
+    leaq .deref_base_pointer(%rip), %rsi
+    movq $DEREF_BASE_POINTER_LEN, %rdx
+    call utils_write_file
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
+    popq %rdx
+    popq %rsi
+    popq %rdi
+    call codegen_code_sur_call
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
+    pushq %rdi
+    pushq %rsi
+    pushq %rdx
+    movq %r10, %rdi
+    leaq .mov_num_start(%rip), %rsi
+    movq $MOV_NUM_START_LEN, %rdx
+    call utils_write_file
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
+    movq $5, %rsi
+    call utils_write_int_file
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
+    leaq .comma(%rip), %rsi
+    movq $COMMA_LEN, %rdx
+    call utils_write_file
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
+    imul $-8, %r9
+    subq $TTL_OFFSET, %r9
+    movq %r9, %rsi
+    call utils_write_int_file
     leaq .deref_base_pointer(%rip), %rsi
     movq $DEREF_BASE_POINTER_LEN, %rdx
     call utils_write_file
@@ -1335,6 +1504,39 @@ codegen_code_cell_leach_expr:
     popq %rdx
     popq %rsi
     popq %rdi
+    call codegen_code_sur_call
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
+    pushq %rdi
+    pushq %rsi
+    pushq %rdx
+    movq %r10, %rdi
+    leaq .mov_num_start(%rip), %rsi
+    movq $MOV_NUM_START_LEN, %rdx
+    call utils_write_file
+    cmp $0, %rax
+    jl codegen_code_leach_expr
+    movq $5, %rsi
+    call utils_write_int_file
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
+    leaq .comma(%rip), %rsi
+    movq $COMMA_LEN, %rdx
+    call utils_write_file
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
+    movq %r9, %rsi
+    imul $-8, %rsi
+    subq $TTL_OFFSET, %rsi
+    call utils_write_int_file
+    leaq .deref_base_pointer(%rip), %rsi
+    movq $DEREF_BASE_POINTER_LEN, %rdx
+    call utils_write_file
+    cmp $0, %rax
+    jl codegen_code_leach_expr
+    popq %rdx
+    popq %rsi
+    popq %rdi
     jmp codegen_code_loop_repeat
 
 codegen_get_cell_number:
@@ -1464,7 +1666,36 @@ codegen_code_leach_expr_args_end:
     popq %rdx
     popq %rsi
     popq %rdi
+    call codegen_code_sur_call
+    cmp $0, %rax
+    jl codegen_code_leach_expr_err
     jmp codegen_code_loop_repeat
+
+codegen_code_sur_call:
+    pushq %rdi
+    pushq %rsi
+    pushq %rdx
+    movq %r10, %rdi
+    leaq .call_sur_code(%rip), %rsi
+    movq $CALL_SUR_CODE_LEN, %rdx
+    call utils_write_file
+    popq %rdx
+    popq %rsi
+    popq %rdi
+    ret
+
+codegen_code_sur_no_update_ttso_call:
+    pushq %rdi
+    pushq %rsi
+    pushq %rdx
+    movq %r10, %rdi
+    leaq .call_sur_no_update_ttso_code(%rip), %rsi
+    movq $CALL_SUR_NO_UPDATE_TTSO_CODE_LEN, %rdx
+    call utils_write_file
+    popq %rdx
+    popq %rsi
+    popq %rdi
+    ret
 
 codegen_code_leach_expr_err:
     popq %rax

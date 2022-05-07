@@ -1628,7 +1628,7 @@ parser_print_primitive_expr:
 # Print the encountered labels, for debugging
 parser_print_encountered_labels:
     movq %rdx, %r15                             # Address of encountered labels array
-    movq %r14, %r14                             # Number of labels in encountered labels array
+    movq %r14, %r12                             # Number of labels in encountered labels array
     leaq .print_encountered_labels_header(%rip), %rdi
     movq $PRINT_ENCOUNTERED_LABELS_HEADER_LEN, %rsi
     call utils_print
@@ -1636,7 +1636,7 @@ parser_print_encountered_labels:
 
 parser_print_encountered_jumps:
     movq %r10, %r15
-    movq %rbp, %r14
+    movq %rbp, %r12
     leaq .print_encountered_jumps_header(%rip), %rdi
     movq $PRINT_ENCOUNTERED_JUMPS_HEADER_LEN, %rsi
     call utils_print
@@ -1649,7 +1649,7 @@ parser_print_string_array:
     jmp parser_print_string_array_loop
 
 parser_print_string_array_loop:
-    cmp %r8, %r14               # Is the index == the length
+    cmp %r8, %r12               # Is the index == the length
     je parser_print_string_array_loop_end
     movq %r15, %r13
     movq %r8, %r9

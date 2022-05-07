@@ -540,11 +540,6 @@ lexer_tokenize_conditional_jump:
     call lexer_tokenize_lji_next_char
     cmp $0, %rax
     jl lexer_return
-    cmp $'u', %r10b
-    jne lexer_tokenize_err_unrecognized_token
-    call lexer_tokenize_lji_next_char
-    cmp $0, %rax
-    jl lexer_return
     cmp $'m', %r10b
     jne lexer_tokenize_err_unrecognized_token
     cmp $0, %rax

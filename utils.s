@@ -177,12 +177,22 @@ utils_streq:
 utils_streq_loop:
     movb (%rdi, %r8, 1), %r9b     # The value of the first string at index %r8
     movb (%rsi, %r8, 1), %r10b    # The value of the second string at index %r8
-    cmp %r9b, %r10b
+    cmpb %r9b, %r10b
     jne utils_streq_loop_end_fail
-    cmp $0, %r9b
-    je utils_streq_loop_end_success
+    cmpb $0, %r9b
+    je utils_streq_r9_finished
+    cmpb $0, %r10b
+    je utils_streq_r10_finished
     incq %r8
     jmp utils_streq_loop
+utils_streq_r9_finished:
+    cmpb $0, %r10b
+    je utils_streq_loop_end_success
+    jmp utils_streq_loop_end_fail
+utils_streq_r10_finished:
+    cmpb $0, %r9b
+    je utils_streq_loop_end_success
+    jmp utils_streq_loop_end_fail
 utils_streq_loop_end_fail:
     popq %r10
     popq %r9
@@ -456,14 +466,17 @@ utils_create_file_err:
 # 1. On success, 0 is in %rax
 # 2. On failure, -1 is in %rax
 utils_write_file:
+    pushq %r11
     movq $SYS_WRITE, %rax
     syscall
     cmp $0, %rax
     jl utils_write_file_err
     movq $0, %rax
+    popq %r11
     ret
 
 utils_write_file_err:
+    popq %r11
     leaq .err_msg_write_file_generic(%rip), %rdi
     movq $ERR_MSG_WRITE_FILE_GENERIC_LEN, %rsi
     movq $-1, %rax

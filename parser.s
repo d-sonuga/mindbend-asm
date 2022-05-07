@@ -13,7 +13,8 @@
 # ------
 # 1. In the case of an error, -1 in %rax, a pointer to the error string in %rdi, the string length in %rsi
 # 2. In the case of a success, 0 in %rax, a pointer to the root of the expression structure in %rdi, a 
-#    pointer to a vector of strings which represent the labels
+#    pointer to a vector of strings which represent the labels in %rsi, the length of the labels array
+#    in %rdx
 #
 # Definitions
 # -----------
@@ -36,7 +37,7 @@
 # DrillExpression           - 1st byte: 4
 #                             next 25 bytes: 0
 # RegionExpression          - 1st byte: 5
-#                             next byte: Region number
+#                             next byte: region number
 #                             next 24 bytes: 0
 # LeachExpression           - 1st byte: 6
 #                             next 8 bytes: address of expression
@@ -317,7 +318,7 @@ parser_parse:
     movq $ALL_CLOSED, %rbx              # The current layers gates state
     movq $0, %r14                       # Length of the encountered labels
     movq $0, %rbp                       # Length of the encountered jumps
-    cmp $0, %rsi                        # Is the token array empty
+    cmp $0, %rsi                        # Is the token array empty?
     je parser_err_only_org_expr
     jmp parser_parse_loop
 
@@ -355,7 +356,7 @@ parser_parse_loop:
     je parser_err_triple_six_not_expected
     andq $0xff, %r9
     movq %r9, %rdi
-    call utils_printint
+    call utils_printint 
     jmp parser_unimplemented
 
 parser_parse_loop_repeat:
@@ -396,6 +397,10 @@ parser_parse_loop_end:
     call parser_print_encountered_jumps
     popq %rax                                   # The address of the base OrganismExpression pushed in the beginning
     call parser_print_org_expr
+    movq %rax, %rdi
+    movq %rdx, %rsi                             # The encountered labels
+    movq %r14, %rdx                             # The labels length
+    movq $0, %rax
     ret
 
 parser_check_if_all_jumps_exist:
@@ -810,6 +815,7 @@ parser_parse_cell_leach_expression_loop:
     je parser_parse_cell_leach_expression_chain
     cmpb $TRIPLE_SIX_EQ_M, (%r9)
     je parser_parse_cell_leach_expression_chain_end
+    decq %r8                                    # Not considering next token anymore
     jmp parser_parse_leach_expression_loop_end
 
 parser_parse_cell_leach_expr_loop_err_expected_cell_expr:
@@ -1346,7 +1352,7 @@ parser_print_org_expr_rec_end:
     ret
 
 parser_print_org_expr_child:
-    leaq .org_expr_child_repr_start, %rdi
+    leaq .org_expr_child_repr_start(%rip), %rdi
     movq $ORG_EXPR_CHILD_REPR_START_LEN, %rsi
     call utils_print
     cmpb $REGION_EXPRESSION, (%r8)

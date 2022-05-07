@@ -36,6 +36,7 @@
 
 .equ STDOUT, 1
 .equ SYS_OPEN, 2
+.equ SYS_WRITE, 1
 
 .section .data
 .err_msg_file_doesnt_exist:
@@ -58,8 +59,21 @@
     .equ ERR_MSG_READ_FILE_GENERIC_LEN, 79
     .asciz "Something went wrong while reading the input file. (It's probably your fault).\n"
 
+.err_msg_create_file_generic:
+    .equ ERR_MSG_CREATE_FILE_GENERIC_LEN, 81
+    .asciz "Something went wrong while creating the output file. (It's probably your fault).\n"
+
+.err_msg_write_file_generic:
+    .equ ERR_MSG_WRITE_FILE_GENERIC_LEN, 83
+    .asciz "Something went wrong while writing to the output file. (It's probably your fault).\n"
+
 .newline:
+    .equ NEWLINE_LEN, 1
     .asciz "\n"
+
+.minus:
+    .equ MINUS_LEN, 1
+    .asciz "-"
 
 .section .bss
 .char_to_print:
@@ -249,6 +263,78 @@ utils_end_printint:
 
 # Role
 # ----
+# To write an integer into a file
+#
+# Expected
+# --------
+# 1. The file descriptor is in %rdi
+# 2. The integer to print is in %rsi
+utils_write_int_file:
+    pushq %r8           # Save whatever was here before
+    pushq %rdx
+    pushq %rcx
+    pushq %r11
+    pushq %r15
+    pushq %r9
+    movq %rdi, %r15     # The file descriptor
+    movq $0, %r8        # Digit count
+    movq %rsi, %rax     # The number to print
+    movq $0, %r9        # Is number negative?
+    call utils_write_int_file_unnegate_number
+    movq $10, %rdi      # The divisor
+    jmp utils_write_int_file_divide_loop
+utils_write_int_file_divide_loop:
+    movq $0, %rdx
+    idiv %rdi
+    pushq %rdx
+    incq %r8
+    cmp $0, %rax    
+    je utils_write_int_file_write
+    jmp utils_write_int_file_divide_loop
+utils_write_int_file_write:
+    cmp $0, %r9
+    je utils_write_int_file_write_loop
+    movq %r15, %rdi
+    leaq .minus(%rip), %rsi
+    movq $MINUS_LEN, %rdx
+    call utils_write_file
+    jmp utils_write_int_file_write_loop
+utils_write_int_file_write_loop:
+    leaq .char_to_print(%rip), %rsi
+    popq %rdx
+    addq $48, %rdx
+    movq %rdx, (%rsi)
+    movq $1, %rdx
+    movq %r15, %rdi
+    call utils_write_file
+    decq %r8
+    cmp $0, %r8
+    je utils_end_write_int_file
+    jmp utils_write_int_file_write_loop
+utils_write_int_file_unnegate_number:
+    cmp $0, %rax
+    jge utils_return
+    imul $-1, %rax
+    movq $1, %r9
+    ret
+utils_end_write_int_file:
+    movq $0, %rax
+    popq %r9
+    popq %r15
+    popq %r11           # Restore whatever was here
+    popq %rcx
+    popq %rdx
+    popq %r8
+    ret
+
+# Role
+# ----
+# Arbitrary returns
+utils_return:
+    ret
+
+# Role
+# ----
 # Open a file
 #
 # Expected
@@ -322,6 +408,64 @@ utils_read_file:
 utils_read_file_err:
     leaq .err_msg_read_file_generic(%rip), %rdi
     movq $ERR_MSG_READ_FILE_GENERIC_LEN, %rsi
+    movq $-1, %rax
+    ret
+
+# Role
+# ----
+# Create a writeable file
+#
+# Expected
+# --------
+# 1. The address of the filename is in %rdi
+#
+# Result
+# ------
+# 1. In the case of a success, the file descriptor is in %rax
+# 2. In the case of a failure, -1 is in %rax, the error string in %rdi, the error length in %rsi
+# .equ SYS_OPEN, 85
+.equ OPS, 577
+.equ O_PERM, 0666
+utils_create_file:
+    movq $SYS_OPEN, %rax
+    movq $OPS, %rsi
+    movq $O_PERM, %rdx
+    syscall
+    cmp $0, %rax
+    jl utils_create_file_err
+    ret
+
+utils_create_file_err:
+    leaq .err_msg_create_file_generic(%rip), %rdi
+    movq $ERR_MSG_CREATE_FILE_GENERIC_LEN, %rsi
+    movq $-1, %rax
+    ret
+
+# Role
+# ----
+# Write to a file
+#
+# Expected
+# --------
+# 1. File descriptor of file to write to is in %rdi
+# 2. Buffer to write from is in %rsi
+# 3. Number of bytes to write is in %rdx
+#
+# Result
+# ------
+# 1. On success, 0 is in %rax
+# 2. On failure, -1 is in %rax
+utils_write_file:
+    movq $SYS_WRITE, %rax
+    syscall
+    cmp $0, %rax
+    jl utils_write_file_err
+    movq $0, %rax
+    ret
+
+utils_write_file_err:
+    leaq .err_msg_write_file_generic(%rip), %rdi
+    movq $ERR_MSG_WRITE_FILE_GENERIC_LEN, %rsi
     movq $-1, %rax
     ret
 

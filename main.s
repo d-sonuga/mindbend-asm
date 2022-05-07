@@ -78,41 +78,41 @@
 #
 # Tokenizing
 # ----------
-    # 12. A pointer to the buffer contents and the length of it are passed as arguments to
-    #       tokenizer_tokenize and tokenizer_tokenize is called
-    # 13. tokenizer_tokenize either returns an error, which will be a negative number in %rax, a pointer
-    #       to the error string in %rdi and the string length in %rsi, or it's a success and returns a
-    #       0 in %rax, which signifies a success, and a pointer to a Vector of numbers, each of which
-    #       represents a token, in %rdi
-    # 14. The result in %rax is compared to 0
-    # 15. If the result is lesser than 0, the string addressed in %rdi is printed and the process exits
+# 12. A pointer to the buffer contents and the length of it are passed as arguments to
+#       tokenizer_tokenize and tokenizer_tokenize is called
+# 13. tokenizer_tokenize either returns an error, which will be a negative number in %rax, a pointer
+#       to the error string in %rdi and the string length in %rsi, or it's a success and returns a
+#       0 in %rax, which signifies a success, and a pointer to a Vector of numbers, each of which
+#       represents a token, in %rdi
+# 14. The result in %rax is compared to 0
+# 15. If the result is lesser than 0, the string addressed in %rdi is printed and the process exits
 #
 # Parsing
 # -------
-    # 15. The vector of tokens is passed as an argument to parser_parse and parser_parse is
-    #       called
-    # 16. parser_parse either returns an error, which will be a negative number in %rax, a pointer to
-    #       the error string in %rdi and the length of the error string in %rsi, or it's a success and
-    #       returns 0 in %rax, a pointer to an OrganismExpression struct in %rdi, and a Vector of pointers
-    #       to strings which represent the labels
-    # 17. The result in %rax is compared with 0
-    # 18. If the result in %rax is lesser than 0, the string addressed in %rdi is printed and the process exits
-    #
+# 15. The vector of tokens is passed as an argument to parser_parse and parser_parse is
+#       called
+# 16. parser_parse either returns an error, which will be a negative number in %rax, a pointer to
+#       the error string in %rdi and the length of the error string in %rsi, or it's a success and
+#       returns 0 in %rax, a pointer to an OrganismExpression struct in %rdi, and a Vector of pointers
+#       to strings which represent the labels
+# 17. The result in %rax is compared with 0
+# 18. If the result in %rax is lesser than 0, the string addressed in %rdi is printed and the process exits
 # Codegen and Saving Output to File
 # ---------------------------------
-    # 19. The OrgExpr pointer, Vector and out filename are passed as arguments to codegen_new_codegen and
-    #       codegen_new_codegen is called and a pointer to a CodeGen struct is returned in %rax
-    # 20. The pointer to the CodeGen struct is passed as an argument to codegen_code and codegen_code is called
-    # 21. codegen_code either returns an error, which will be a negative number in %rax, a pointer to the error
-    #       string in %rdi and the length of the error in %rsi, or it's a success and returns 0 in %rax
-    # 22. The result in %rax is compared with 0
-    # 23. If the result is lesser than 0, the string pointed to in %rdi is printed and the process exits
-    # 24. The process exits with a code of 0, meaning success
+# 19. The OrgExpr pointer, Vector and out filename are passed as arguments to codegen_new_codegen and
+#       codegen_new_codegen is called and a pointer to a CodeGen struct is returned in %rax
+# 20. The pointer to the CodeGen struct is passed as an argument to codegen_code and codegen_code is called
+# 21. codegen_code either returns an error, which will be a negative number in %rax, a pointer to the error
+#       string in %rdi and the length of the error in %rsi, or it's a success and returns 0 in %rax
+# 22. The result in %rax is compared with 0
+# 23. If the result is lesser than 0, the string pointed to in %rdi is printed and the process exits
+# 24. The process exits with a code of 0, meaning success
 
 .include "utils.s"
 .include "cmd_parser.s"
 .include "lexer.s"
 .include "parser.s"
+.include "codegen.s"
 
 .section .data
 .usage_info:
@@ -199,7 +199,6 @@ tokenize:
     jl print_err_and_exit
     pushq %rdx                      # Save address of token array
     pushq %rax                      # Save number of tokens
-    
     movq %rax, %rdi
     imul $8, %rdi
     call utils_alloc                # Space to store encountered labels in parser
@@ -220,6 +219,27 @@ tokenize:
 
 parse:
     call parser_parse
+    cmp $0, %rax
+    jl print_err_and_exit
+    jmp codegen
+
+codegen:
+    # Create new file
+    # Pass expression from parser, encountered labels and new file descriptor to codegen
+    # Handle result
+    popq %r8                        # Restoring the out filename
+    pushq %rdi                      # The address of the expression structure
+    pushq %rsi                      # The address of the labels array
+    pushq %rdx                      # The length of the encountered labels array
+    movq %r8, %rdi
+    call utils_create_file
+    cmp $0, %rax
+    jl print_err_and_exit
+    popq %rdx
+    popq %rsi
+    popq %rdi
+    movq %rax, %r10                 # The file descriptor of the output file
+    call codegen_code
     cmp $0, %rax
     jl print_err_and_exit
     jmp exit_success

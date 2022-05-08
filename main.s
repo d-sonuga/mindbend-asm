@@ -139,6 +139,61 @@
 .err_msg_generic:
     .equ ERR_MSG_GENERIC_LEN, 53
     .asciz "Something went wrong. (It's most likely your fault).\n"
+.err_msg_assemble:
+    .equ ERR_MSG_ASSEMBLE_LEN, 78
+    .asciz "Something went wrong when assembling the code. (It's most likely your fault).\n"
+.err_msg_link:
+    .equ ERR_MSG_LINK_LEN, 75
+    .asciz "Something went wrong when linking the code. (It's most likely your fault).\n"
+.err_msg_rm:
+    .equ ERR_MSG_RM_LEN, 89
+    .asciz "Something went wrong when removing the intermediate file. (It's most likely your fault).\n"
+.temp_out_filename:
+    .asciz "out.tmp"
+.gas_assembler:
+    .equ GAS_ASSEMBLER_LEN, 7
+    .asciz "/bin/as"
+.gas_arg1:
+    .asciz "-o"
+.gas_arg2:
+    .asciz "out.tmp"
+.gas_env:
+    .quad 0
+.linker:
+    .asciz "/bin/ld"
+.linker_arg1:
+    .asciz "out.tmp"
+.linker_arg2:
+    .asciz "-o"
+.linker_env:
+    .quad 0
+.rm:
+    .asciz "/bin/rm"
+.rm_arg1:
+    .asciz "out.tmp"
+.rm_args:
+    .quad .rm
+    .quad .rm_arg1
+    .quad 0
+.rm_env:
+    .quad 0
+
+.section .bss
+.struct_siginfo:
+    .space 64
+.struct_rusage:
+    .space 64
+.linker_args:
+    .space 40
+.gas_args:
+    .space 40
+
+.equ SYS_EXIT, 60
+.equ SYS_FORK, 57
+.equ SYS_WAIT, 247
+.equ SYS_EXECVE, 59
+.equ EXIT_SUCCESS, 0
+.equ EXIT_ERR, 1
 
 .section .text
 .globl _start
@@ -227,7 +282,7 @@ codegen:
     # Create new file
     # Pass expression from parser, encountered labels and new file descriptor to codegen
     # Handle result
-    popq %r8                        # Restoring the out filename
+    popq %r8
     pushq %rdi                      # The address of the expression structure
     pushq %rsi                      # The address of the labels array
     pushq %rdx                      # The length of the encountered labels array
@@ -238,11 +293,129 @@ codegen:
     popq %rdx
     popq %rsi
     popq %rdi
+    pushq %r8                       # Save out filename
     movq %rax, %r10                 # The file descriptor of the output file
     call codegen_code
     cmp $0, %rax
     jl print_err_and_exit
+    jmp assemble
+
+assemble:
+    .equ PID_TYPE, 1
+    .equ OP_WAIT_FOR_EXIT, 4
+    movq $SYS_FORK, %rax
+    syscall
+    cmp $0, %rax
+    jl assemble_err
+    je invoke_assembler
+    movq $PID_TYPE, %rdi
+    movq %rax, %rsi                         # Child PID
+    leaq .struct_siginfo(%rip), %rdx        # Space for siginfo struct
+    movq $OP_WAIT_FOR_EXIT, %r10
+    leaq .struct_rusage(%rip), %r8
+    movq $SYS_WAIT, %rax
+    syscall
+    cmp $0, %rax
+    jl assemble_err
+    jmp link
+
+link:
+    movq $SYS_FORK, %rax
+    syscall
+    cmp $0, %rax
+    jl link_err
+    je invoke_linker
+    movq $PID_TYPE, %rdi
+    movq %rax, %rsi
+    leaq .struct_siginfo(%rip), %rdx
+    movq $OP_WAIT_FOR_EXIT, %r10
+    leaq .struct_rusage(%rip), %r8
+    movq $SYS_WAIT, %rax
+    syscall
+    cmp $0, %rax
+    jl link_err
+    jmp remove_intermediate_file
+
+remove_intermediate_file:
+    movq $SYS_FORK, %rax
+    syscall
+    cmp $0, %rax
+    jl link_err
+    je invoke_rm
+    movq $PID_TYPE, %rdi
+    movq %rax, %rsi
+    leaq .struct_siginfo(%rip), %rdx
+    movq $OP_WAIT_FOR_EXIT, %r10
+    leaq .struct_rusage(%rip), %r8
+    movq $SYS_WAIT, %rax
+    syscall
+    cmp $0, %rax
+    jl remove_intermediate_file_err
     jmp exit_success
+
+invoke_assembler:
+    leaq .gas_args(%rip), %rsi
+    popq %r9                                # The out filename
+    leaq .gas_assembler(%rip), %r15
+    movq %r15, (%rsi)
+    leaq .gas_arg1(%rip), %r15
+    movq %r15, 8(%rsi)
+    leaq .gas_arg2(%rip), %r15
+    movq %r15, 16(%rsi)
+    movq %r9, 24(%rsi)
+    movq $0, 32(%rsi)
+    movq $SYS_EXECVE, %rax
+    leaq .gas_assembler(%rip), %rdi
+    leaq .gas_env(%rip), %rdx
+    syscall
+    # Reaches here only if there is an error
+    movq $EXIT_ERR, %rdi
+    movq $60, %rax
+    syscall
+
+invoke_linker:
+    leaq .linker_args(%rip), %rsi
+    leaq .linker(%rip), %r15
+    movq %r15, (%rsi)
+    leaq .linker_arg1(%rip), %r15
+    movq %r15, 8(%rsi)
+    leaq .linker_arg2(%rip), %r15
+    movq %r15, 16(%rsi)
+    popq %r9                                # out filename
+    movq %r9, 24(%rsi)
+    movq $0, 32(%rsi)
+    movq $SYS_EXECVE, %rax
+    leaq .linker(%rip), %rdi
+    leaq .linker_env(%rip), %rdx
+    syscall
+    movq $EXIT_ERR, %rdi
+    movq $60, %rax
+    syscall
+
+invoke_rm:
+    movq $SYS_EXECVE, %rax
+    leaq .rm(%rip), %rdi
+    leaq .rm_args(%rip), %rsi
+    leaq .rm_env(%rip), %rdx
+    syscall
+    movq $EXIT_ERR, %rdi
+    movq $SYS_EXIT, %rax
+    syscall
+
+assemble_err:
+    leaq .err_msg_assemble(%rip), %rdi
+    movq $ERR_MSG_ASSEMBLE_LEN, %rsi
+    jmp print_err_and_exit
+
+remove_intermediate_file_err:
+    leaq .err_msg_rm(%rip), %rdi
+    movq $ERR_MSG_RM_LEN, %rsi
+    jmp print_err_and_exit
+
+link_err:
+    leaq .err_msg_link(%rip), %rdi
+    movq $ERR_MSG_LINK_LEN, %rsi
+    jmp print_err_and_exit
 
 print_empty_input_file_and_exit:
     leaq .err_msg_empty_input_file(%rip), %rdi
@@ -283,12 +456,12 @@ exit_too_few_args:
     jmp print_err_and_usage_and_exit
 
 exit_err:
-    movq $60, %rax
+    movq $SYS_EXIT, %rax
     movq $1, %rdi
     syscall
 
 exit_success:
-    movq $60, %rax
+    movq $SYS_EXIT, %rax
     movq $0, %rdi
     syscall
     

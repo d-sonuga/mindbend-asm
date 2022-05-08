@@ -152,6 +152,10 @@
     .equ ERR_MSG_JUMPS_TO_NON_EXISTENT_LABELS_LEN, 67
     .asciz "Attempt to jump to non existent label at the nth position. Find n.\n"
 
+.err_msg_duplicate_labels:
+    .equ ERR_MSG_DUPLICATE_LABELS_LEN, 91
+    .asciz "Label name at the nth position duplicated in label name at the mth position. Find n and m.\n"
+
 .org_expr_repr_start:
     .equ ORG_EXPR_REPR_START_LEN, 19
     .asciz "OrganismExpression("
@@ -390,6 +394,9 @@ parser_parse_loop_end:
     movb $NULL_EXPRESSION, (%rax)
     popq %r12
     movq %rax, ORG_EXPR_NEXT_ORG_OFFSET(%r12)   # Setting the last OrganismExpression's next to the null expression
+    call parser_check_for_duplicate_labels
+    cmp $1, %rax
+    je parser_err_duplicate_labels
     call parser_check_if_all_jumps_exist
     cmp $0, %rax
     je parser_err_jumps_to_non_existent_labels
@@ -443,6 +450,61 @@ parser_check_if_all_jumps_exist_inner_loop_end_fail:
     ret
 
 parser_check_if_all_jumps_exist_loop_end:
+    ret
+
+parser_check_for_duplicate_labels:
+    # %rdx has the address of the encountered labels
+    # %r14 has the number of labels
+    pushq %r8
+    pushq %r9
+    pushq %rdi
+    pushq %rsi
+    pushq %r14
+    movq $0, %r8
+    jmp parser_check_for_duplicate_labels_loop
+
+parser_check_for_duplicate_labels_loop:
+    cmp %r14, %r8
+    je parser_check_for_duplicate_labels_loop_end
+    movq $0, %r9
+    movq (%rdx, %r8, 8), %rdi               # The address of the current string to be checked
+    jmp parser_check_for_duplicate_labels_loop_inner
+
+parser_check_for_duplicate_labels_loop_inner:
+    cmp %r9, %r14
+    je parser_check_for_duplicate_labels_loop_inner_end
+    cmp %r9, %r8
+    je parser_check_for_duplicate_labels_loop_inner_repeat
+    movq (%rdx, %r9, 8),  %rsi              # The address of the second string
+    call utils_streq
+    cmp $0, %rax
+    je parser_check_for_duplicate_labels_loop_inner_repeat
+    jmp parser_check_for_duplicate_labels_end_fail
+
+parser_check_for_duplicate_labels_loop_inner_repeat:
+    incq %r9
+    jmp parser_check_for_duplicate_labels_loop_inner
+
+parser_check_for_duplicate_labels_loop_inner_end:
+    incq %r8
+    jmp parser_check_for_duplicate_labels_loop
+
+parser_check_for_duplicate_labels_loop_end:
+    popq %r14
+    popq %rsi
+    popq %rdi
+    popq %r9
+    popq %r8
+    movq $0, %rax
+    ret
+
+parser_check_for_duplicate_labels_end_fail:
+    popq %r14
+    popq %rsi
+    popq %rdi
+    popq %r9
+    popq %r8
+    movq $1, %rax
     ret
 
 parser_parse_loop_end_err_alloc:
@@ -1308,6 +1370,13 @@ parser_err_triple_six_not_expected:
 parser_err_jumps_to_non_existent_labels:
     leaq .err_msg_jumps_to_non_existent_labels(%rip), %rdi
     movq $ERR_MSG_JUMPS_TO_NON_EXISTENT_LABELS_LEN, %rsi
+    popq %rax
+    movq $-1, %rax
+    ret
+
+parser_err_duplicate_labels:
+    leaq .err_msg_duplicate_labels(%rip), %rdi
+    movq $ERR_MSG_DUPLICATE_LABELS_LEN, %rsi
     popq %rax
     movq $-1, %rax
     ret
